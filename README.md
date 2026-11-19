@@ -1,34 +1,67 @@
 # NearHelp（附近互助）
 
-## MVP 2.0 · 附近互助
+## 访客演示版
 
-当前开发分支把首页改为附近的免费求助。游客可浏览，注册或登录后才能发布、回复和申请协助。发布时需要浏览器定位成功，手动选区仅用于浏览。发布者接受一位帮忙者后，两人可在消息页协调。发布者可标记已解决或取消，过期需求会自动退出附近列表，已建立的私信保留。
+两位访客可以在各自的浏览器中发布免费或悬赏需求、公开评论、回复和申请协助。发布者接受一位帮忙者后，双方即可私信，需求变为进行中。发布者标记已解决后，评论和私信可继续查看。悬赏使用港币，金额仅供双方约定。
 
-- 默认浏览范围为 500 米，可扩大至 1 公里或 3 公里。定位由用户主动开启，已有浏览器授权可在下次打开时复用。
-- 活跃统计和公开资料均默认关闭。活跃统计按账号去重，5 分钟后失效。公开资料仅供已登录用户查看，并按约公里级区域及小样本阈值展示。服务端按粗略位置计算距离，客户端不会收到陌生人的坐标。浏览器位置不能作为到场证明。
-- 帮忙申请、私信和解决状态由服务端检查权限。可举报或屏蔽相关账号，在「我的」解除屏蔽。举报写入 `help_reports` 供运营审阅，当前没有运营管理页面。第一轮仅支持免费求助。
-- 旧版话题与评论继续可通过 `/archive` 或原链接查看。地图保留 Leaflet 和原瓦片配置。新版无需新的地图或账号服务密钥。
+### 电脑本地运行
 
-### 本地验证新版
-
-首次安装或依赖变化时，按下方本地启动说明安装依赖。建议为联调使用独立数据库。在后端 PowerShell 执行：
+在两个 PowerShell 窗口分别执行以下命令。首次使用先按下方「本地启动」安装依赖。有其他 NearHelp 版本运行时也可使用这组独立端口和数据库。
 
 ```powershell
 cd D:\Neartalk\backend
-$env:NEARTALK_DB_PATH = 'data/mvp2-local.sqlite3'
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+$env:NEARHELP_DEMO_GUESTS = 'true'
+$env:NEARTALK_DB_PATH = 'data/demo-preview.sqlite3'
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8186
 ```
-
-另开一个窗口运行前端：
 
 ```powershell
 cd D:\Neartalk\frontend
-npm.cmd run dev
+$env:NEARHELP_DEV_API_PORT = '8186'
+npm.cmd run dev -- --host 127.0.0.1 --port 5286
 ```
 
-打开 [http://localhost:5173](http://localhost:5173)。用普通窗口和无痕窗口分别注册两个账号，允许浏览器定位后依次测试免费发布、公开回复、申请协助、接受、双向私信和结束需求。未取得可用位置时无法发布，但可手动选区浏览。手机访问其他设备的局域网 HTTP 地址通常无法调用定位，真机验收需要 HTTPS。
+打开 [电脑本地演示](http://127.0.0.1:5286)。用普通窗口和无痕窗口可以分别担任发布者和帮忙者。首次打开会看到系统分配的昵称。点击「获取当前位置」后才会请求位置权限。重新打开或刷新后可手动定位，在原标签页刷新会保留大致浏览区域。
 
-后端测试在 `backend/` 运行 `python -m pytest -q`，前端在 `frontend/` 运行 `npm ci` 和 `npm run build`。生产发布前先备份 SQLite，在备份副本验证新增表与旧链接，再打包前后端，按既有发布流程部署并重启服务。新表会自动创建，历史帖子无需转换。首次生产发布后，应实测双账号流程及 HTTPS 下账号 Cookie 的 `Secure` 属性。
+### 两部真机演示
+
+两部手机用 Safari 或 Chrome 直接打开**同一个受信任的 HTTPS 演示地址**。电脑上的回环地址只能用于电脑本机。若使用独立测试域名，按下方「部署前确认」启用演示。也可以在同一 Wi-Fi 内运行以下本地预览。
+
+1. 保持上述后端启动。在电脑用 `ipconfig` 找到 Wi-Fi 的 IPv4 地址。准备覆盖这个 IP、且两部测试手机都信任的开发证书。使用 mkcert 时，可在项目以外的目录执行 `mkcert -cert-file demo.pem -key-file demo-key.pem <电脑的Wi-Fi地址>`。两部测试手机只需安装开发 CA 的公开证书，iOS 还需启用完全信任。私钥留在电脑。测试结束可移除测试 CA。[mkcert 手机证书说明](https://github.com/FiloSottile/mkcert#mobile-devices)
+2. 在前端窗口停止原预览，设置环境变量并启动 HTTPS。以下证书文件路径按实际替换。若系统弹出防火墙提示，仅允许专用网络。
+
+```powershell
+cd D:\Neartalk\frontend
+$env:NEARHELP_DEV_API_PORT = '8186'
+$env:NEARHELP_DEV_CERT = 'C:\nearhelp-certs\demo.pem'
+$env:NEARHELP_DEV_KEY = 'C:\nearhelp-certs\demo-key.pem'
+npm.cmd run dev -- --host 0.0.0.0 --port 5286
+```
+
+3. 两部手机打开 `https://电脑的Wi-Fi地址:5286`，分别点击「获取当前位置」。核对昵称不同，界面显示定位成功。若授权被拒，检查系统定位和网站位置权限。只有大致位置时可以浏览，发布需要最近五分钟内且精度在 500 米以内的设备位置。浏览器位置由设备报告，手动选区仅改变浏览中心。[iPhone 定位设置](https://support.apple.com/en-us/102647) · [Android Chrome 网站权限](https://support.google.com/chrome/answer/142065?co=GENIE.Platform%3DAndroid)
+4. A 发布「借一个 Type-C 充电器半小时」，选择悬赏 HK$5、1 小时。B 保持「附近」页，通常在一次 6 秒轮询内看到。若两部手机的定位精度相差较大，可将浏览范围扩大至 1 公里。
+5. B 打开评论并留言，A 点该条评论下的「回复」。B 单独点击「我能帮忙」，A 在「消息」中接受。两人互发一条私信，再各自刷新。A 回到关联需求点「标记已解决」，B 的附近列表应移除它。「我的」仍能打开详情和聊天记录。
+6. 额外检查拒绝定位后的手动浏览、拒绝协助、免费需求，以及第三位访客打开私信直链时的访问限制。
+
+### 数据、权限与清理
+
+服务端的 `NEARHELP_DEMO_GUESTS` 默认关闭。开启时，互助接口接受带 HttpOnly、SameSite=Strict 凭证的访客，HTTPS 下同时设置 Secure。凭证有效期 30 天，SQLite 仅保存凭证摘要。清除网站数据会失去该访客身份的访问权。原有注册账号保留，账号登录和访客会话使用不同 Cookie。关闭开关并重启后，已有访客凭证也不能操作互助接口。旧讨论的写权限仍要求注册账号。
+
+需求和私信的所有权、会话成员、拉黑、举报和限频均由后端检查。每身份每分钟上限为发布 3 条、评论或回复 15 条、协助申请 12 次、私信 30 条，另有按 IP 的限制。标题、说明和评论或私信的上限分别是 80、2000 和 500 字。活跃统计和公开昵称默认关闭。公开卡片只展示大致距离。
+
+演示数据建议放入独立 SQLite 文件。要移除单场测试，在后端目录先运行下列预览命令。数字改为测试需求详情链接末尾的编号。核对标题后追加 `--apply`，会在一个事务内删除该访客需求及其关联的评论、申请、私信和举报。命令拒绝清理注册账号发布的需求。
+
+```powershell
+.\.venv\Scripts\python.exe -m app.clean_demo --db data/demo-preview.sqlite3 --request 1
+```
+
+### 重跑自动验收
+
+后端在 `backend/` 运行 `.\.venv\Scripts\python.exe -m pytest -q`。前端在 `frontend/` 依次运行 `npm.cmd ci`、`npm.cmd run build` 和 `npm.cmd run test:demo`。浏览器测试需要本机 Chrome、后端虚拟环境及已构建的前端。测试会自动启动临时服务，创建并清理独立数据库，使用测试设备位置。验证 WebKit 可先运行 `npx.cmd playwright-core install webkit`，再运行 `npm.cmd run test:demo -- --webkit`。如果当前终端已配置上文开发证书，测试同样会走 HTTPS。
+
+### 部署前确认
+
+确认演示域名、启用时间和数据库路径，建议先使用独立演示数据库和受信任 HTTPS。若升级现有实例，先备份 SQLite，在副本验证升级，再部署同一版本的前后端。启动时会自动添加访客标志、悬赏金额和回复关联列，旧需求默认为免费。沿用 Nginx 同源 `/api` 反向代理，保留原始 Host 和 HTTPS 协议，直接在浏览器中打开页面。地图沿用现有瓦片配置。没有新增服务密钥。上线后用两部真机复测定位、Cookie 和完整流程。
 
 ## 生产环境
 
@@ -42,7 +75,7 @@ NearHelp 继续使用 https://hacker.guihongyu.com 。服务器通过已有的 `
 - HTTPS 证书由 Certbot 管理，`certbot.timer` 已启用自动续期。
 - `deploy/` 保存服务配置、Nginx 配置和发布脚本。旧版验收脚本只适用于稳定基线。
 
-面向校园、宿舍和活动现场的匿名话题社区。打开首页即进入 `cityu-hackathon`。点击右上角的昵称可以修改发言时使用的名字。
+下方保留基础安装命令和旧版匿名话题社区的维护记录。当前演示版的首页、权限、范围和真机运行方式见本文开头。
 
 ## 本地启动
 
@@ -92,7 +125,7 @@ Windows 若限制 PowerShell 脚本执行，可用 `npm.cmd ci` 和 `npm.cmd run
 - 手机端定位需 HTTPS。原版部署使用既有 Nginx 同源 `/api` 和 SPA 路由配置。原版地点服务使用后端地点密钥。
 
 - 用两个独立浏览器会话打开首页。A 发布后跳到详情，B 在保持前台的列表页约 2 秒内看到新话题。B 点开话题并发表评论，A 在详情页约 2 秒内看到回复。刷新页面并重启后端后，检查话题与评论仍在。
-- 两部手机实测时，让手机和开发机连接同一局域网，用 `npm run dev -- --host 0.0.0.0` 启动前端并访问 `http://开发机局域网IP:5173`。手机只需访问 5173 端口，后端仍使用本地回环地址。
+- 两部手机验收定位和互助流程请使用上文「两部真机演示」中的 HTTPS 配置。
 - 在 `backend/` 用虚拟环境的 Python 执行 `python -m pytest -q`。API 测试使用临时 SQLite 数据库，覆盖默认社区、跨会话读写、重启持久性、输入校验和写入限频。
 - 在 `frontend/` 运行 `npm run build`，进行 TypeScript 检查并生成 `dist/`。
 

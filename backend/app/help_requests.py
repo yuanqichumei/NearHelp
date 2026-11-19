@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Path as ApiPath, Request
 from pydantic import BaseModel, Field, StringConstraints
 
-from .auth import current_account, public_account, require_account, same_origin
+from .auth import current_help_user, public_account, require_help_user, same_origin
 from .db import connect
 from .location import ACTIVE_SECONDS, Point, count_band, distance, rate_limit, require_session
 
@@ -16,7 +16,7 @@ Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, ma
 Description = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 Reply = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 RequestId = Annotated[int, ApiPath(ge=1, le=2**63 - 1)]
-HELP_FIELDS = """h.topic_id AS id, h.author_id, h.lat, h.lon, h.expires_at, h.status,
+HELP_FIELDS = """h.topic_id AS id, h.author_id, h.lat, h.lon, h.expires_at, h.status, h.reward_cents,
                  t.title, t.content, t.created_at, a.nickname"""
 HELP_FROM = """FROM help_requests h JOIN topics t ON t.id = h.topic_id
                JOIN accounts a ON a.id = h.author_id"""
@@ -31,7 +31,7 @@ class Discovery(Point):
 
 
 class Fix(Point):
-    accuracy: Annotated[float, Field(gt=0, le=500, allow_inf_nan=False)]
+    accuracy: Annotated[float, Field(ge=0, le=500, allow_inf_nan=False)]
 
 
 class NewHelp(BaseModel):
@@ -39,10 +39,15 @@ class NewHelp(BaseModel):
     content: Description
     minutes: Literal[30, 60, 180, 1440]
     location: Fix
+    reward_cents: Annotated[int, Field(strict=True, ge=0, le=1000000)] = 0
 
 
 class Text(BaseModel):
     content: Reply
+
+
+class NewComment(Text):
+    parent_id: Annotated[int, Field(gt=0, le=2**63 - 1)] | None = None
 
 
 class Preferences(BaseModel):
@@ -96,7 +101,7 @@ def effective_state(row, now):
 
 
 def item_view(row, now):
-    return {**{key: row[key] for key in ("id", "author_id", "nickname", "title", "created_at", "expires_at")},
+    return {**{key: row[key] for key in ("id", "author_id", "nickname", "title", "created_at", "expires_at", "reward_cents")},
             "status": effective_state(row, now)}
 
 
@@ -140,13 +145,18 @@ def help_router(path):
         extent = body.radius / 110000
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            account = current_account(connection, request)
+            account = current_help_user(connection, request)
             actor = account["id"] if account else require_session(connection, request, now)["id"]
-            throttle(connection, request, actor, "nearby", now, 12)
+            throttle(connection, request, actor, "nearby", now, 30)
             candidates = connection.execute(
-                f"""SELECT {HELP_FIELDS} {HELP_FROM}
+                f"""SELECT {HELP_FIELDS},
+                    (SELECT count(*) FROM comments c WHERE c.topic_id=h.topic_id AND NOT EXISTS (
+                        SELECT 1 FROM account_blocks b WHERE (b.blocker_id=? AND b.blocked_id=c.guest_id)
+                        OR (b.blocked_id=? AND b.blocker_id=c.guest_id))) AS comment_count,
+                    EXISTS(SELECT 1 FROM help_offers o WHERE o.request_id=h.topic_id AND o.helper_id=?) AS has_offered
+                    {HELP_FROM}
                     WHERE h.status='open' AND h.expires_at>? AND h.lat BETWEEN ? AND ?""",
-                (now, lat - extent, lat + extent),
+                (actor, actor, actor, now, lat - extent, lat + extent),
             ).fetchall()
             presence = connection.execute(
                 """SELECT p.lat,p.lon,a.id,a.nickname,a.discoverable FROM help_presence p
@@ -162,6 +172,7 @@ def help_router(path):
             results.sort(key=lambda entry: (int(entry[0] // 100), -entry[1]["id"]))
             items = [{**item_view(item, now), "summary": item["content"][:140],
                       "distance_m": min(body.radius, max(100, math.ceil(meters / 100) * 100)),
+                      "comment_count": item["comment_count"], "has_offered": bool(item["has_offered"]),
                       "response_count": responders(connection, item, actor)}
                      for meters, item in results[:60]]
             active = [row for row in presence if distance(lat, lon, row["lat"], row["lon"]) <= body.radius]
@@ -184,7 +195,7 @@ def help_router(path):
         same_origin(request)
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            account = require_account(connection, request)
+            account = require_help_user(connection, request)
             throttle(connection, request, account["id"], "preferences", time.time(), 12)
             connection.execute("UPDATE accounts SET share_presence=?, discoverable=? WHERE id=?",
                                (body.share_presence, body.discoverable, account["id"]))
@@ -200,7 +211,7 @@ def help_router(path):
         lat, lon = round_point(body, 1000)
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            account = require_account(connection, request)
+            account = require_help_user(connection, request)
             if not account["share_presence"]:
                 raise HTTPException(403, "附近活跃统计未开启。")
             throttle(connection, request, account["id"], "presence", now, 8)
@@ -217,7 +228,7 @@ def help_router(path):
         now = time.time()
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            account = require_account(connection, request)
+            account = require_help_user(connection, request)
             if any(task in f"{body.title}\n{body.content}" for task in UNSUPPORTED_TASKS):
                 raise HTTPException(422, "请只发布低风险的日常求助。")
             throttle(connection, request, account["id"], "publish", now, 3)
@@ -227,15 +238,15 @@ def help_router(path):
                 (HELP_COMMUNITY, account["id"], account["nickname"], body.title, body.content),
             ).lastrowid
             connection.execute(
-                "INSERT INTO help_requests (topic_id, author_id, lat, lon, expires_at) VALUES (?, ?, ?, ?, ?)",
-                (topic_id, account["id"], *round_point(body.location, 500), now + body.minutes * 60),
+                "INSERT INTO help_requests (topic_id, author_id, lat, lon, expires_at,reward_cents) VALUES (?, ?, ?, ?, ?, ?)",
+                (topic_id, account["id"], *round_point(body.location, 500), now + body.minutes * 60, body.reward_cents),
             )
             return item_view(get_help(connection, topic_id), now)
 
     @router.get("/mine")
     def mine(request: Request):
         with connect(path) as connection:
-            account = require_account(connection, request)
+            account = require_help_user(connection, request)
             rows = connection.execute(
                 f"""SELECT {HELP_FIELDS} {HELP_FROM}
                     WHERE h.author_id=? OR EXISTS (SELECT 1 FROM help_offers o
@@ -250,12 +261,13 @@ def help_router(path):
     def detail(request_id: RequestId, request: Request):
         now = time.time()
         with connect(path) as connection:
-            account = current_account(connection, request)
+            account = current_help_user(connection, request)
             actor = account["id"] if account else None
             item = visible_help(connection, request_id, actor)
             is_owner = actor == item["author_id"]
             replies = connection.execute(
-                "SELECT id, guest_id AS author_id, nickname, content, created_at FROM comments WHERE topic_id=? ORDER BY id",
+                """SELECT id, parent_id, guest_id AS author_id, nickname, content, created_at FROM comments
+                   WHERE topic_id=? ORDER BY COALESCE(parent_id,id),id""",
                 (request_id,),
             )
             offers = connection.execute(
@@ -277,19 +289,26 @@ def help_router(path):
             }
 
     @router.post("/requests/{request_id}/replies", status_code=201)
-    def reply(request_id: RequestId, body: Text, request: Request):
+    def reply(request_id: RequestId, body: NewComment, request: Request):
         same_origin(request)
         now = time.time()
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            account = require_account(connection, request)
+            account = require_help_user(connection, request)
             item = visible_help(connection, request_id, account["id"])
             if effective_state(item, now) not in {"open", "in_progress"}:
                 raise HTTPException(409, "该需求已关闭。")
+            if body.parent_id is not None:
+                parent = connection.execute(
+                    "SELECT guest_id FROM comments WHERE id=? AND topic_id=? AND parent_id IS NULL",
+                    (body.parent_id, request_id),
+                ).fetchone()
+                if not parent or blocked(connection, account["id"], parent["guest_id"]):
+                    raise HTTPException(422, "请选择本需求中可见的一级评论进行回复。")
             throttle(connection, request, account["id"], "reply", now, 15)
             reply_id = connection.execute(
-                "INSERT INTO comments (topic_id, guest_id, nickname, content) VALUES (?, ?, ?, ?)",
-                (request_id, account["id"], account["nickname"], body.content),
+                "INSERT INTO comments (topic_id, parent_id, guest_id, nickname, content) VALUES (?, ?, ?, ?, ?)",
+                (request_id, body.parent_id, account["id"], account["nickname"], body.content),
             ).lastrowid
         return {"id": reply_id}
 
@@ -299,7 +318,7 @@ def help_router(path):
         now = time.time()
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            account = require_account(connection, request)
+            account = require_help_user(connection, request)
             item = visible_help(connection, request_id, account["id"])
             if item["author_id"] == account["id"]:
                 raise HTTPException(403, "不能协助自己的需求。")
@@ -315,7 +334,7 @@ def help_router(path):
         now = time.time()
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            account = require_account(connection, request)
+            account = require_help_user(connection, request)
             item = get_help(connection, request_id)
             require_owner(item, account)
             if effective_state(item, now) != "open" or blocked(connection, account["id"], helper_id):
@@ -341,7 +360,7 @@ def help_router(path):
         now = time.time()
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            account = require_account(connection, request)
+            account = require_help_user(connection, request)
             item = get_help(connection, request_id)
             require_owner(item, account)
             if effective_state(item, now) not in {"open", "in_progress"}:
@@ -357,7 +376,7 @@ def help_router(path):
         same_origin(request)
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            account = require_account(connection, request)
+            account = require_help_user(connection, request)
             if target_id == account["id"] or not connection.execute(
                 "SELECT 1 FROM accounts WHERE id=?", (target_id,),
             ).fetchone():
@@ -372,7 +391,7 @@ def help_router(path):
     @router.get("/blocks")
     def blocks(request: Request):
         with connect(path) as connection:
-            account = require_account(connection, request)
+            account = require_help_user(connection, request)
             return [dict(row) for row in connection.execute(
                 """SELECT a.id, a.nickname FROM account_blocks b JOIN accounts a ON a.id=b.blocked_id
                    WHERE b.blocker_id=? ORDER BY a.nickname""", (account["id"],),
@@ -384,7 +403,7 @@ def help_router(path):
         now = time.time()
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            account = require_account(connection, request)
+            account = require_help_user(connection, request)
             item = get_help(connection, request_id)
             participant = target_id == item["author_id"] or connection.execute(
                 """SELECT 1 FROM help_offers WHERE request_id=? AND helper_id=?

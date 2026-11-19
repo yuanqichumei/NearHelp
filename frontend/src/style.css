@@ -190,3 +190,36 @@ p.error { margin-bottom: .6rem; }
 @media (min-width: 38rem) {
   .help-top-area { display: inline; white-space: nowrap; }
 }
+
+.help-shell { padding-top: 1rem; padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+.topbar { min-height: 56px; }
+.location-panel { padding: .9rem 1rem; background: #eef6ef; border: 1px solid #d0e2d5; border-radius: 16px; margin-bottom: 1.15rem; }
+.location-line { display: flex; align-items: center; justify-content: space-between; gap: .65rem; }
+.location-line > .guest-button { flex-shrink: 0; }
+.location-name, .map-link, .card-foot a { display: inline-flex; align-items: center; gap: .35rem; }
+.location-name { font-weight: 700; color: var(--green-dark); }
+.location-hint { font-size: .85rem; margin-top: .25rem; color: var(--muted); }
+.location-panel .help-controls { margin: .75rem 0 0; }
+.compact-field select, .field select { min-height: 44px; padding: .25rem .4rem; border: 1px solid #b9cbc1; border-radius: 8px; background: #fff; color: inherit; font-size: 1rem; }
+.feed-head h1 { font-size: 1.5rem; letter-spacing: -.035em; }
+.map-link, .card-main, .card-foot a { text-decoration: none; }
+.map-link { color: var(--green); min-height: 44px; }
+.card-main { display: block; }
+.help-tag.reward { color: #77491c; background: #fbecd6; }
+.topic-card .help-tag-row { justify-content: space-between; margin: 0; }
+.card-foot { display: flex; align-items: center; justify-content: space-between; gap: .75rem; border-top: 1px solid var(--border); margin-top: .75rem; padding-top: .4rem; }
+.card-foot a, .offer-button { color: var(--green-dark); min-height: 44px; }
+.offer-button { font-weight: 650; padding: .4rem .85rem; border: 0; border-radius: 10px; background: #e3f1e7; }
+.empty-actions { display: flex; gap: .65rem; flex-wrap: wrap; justify-content: center; }
+.empty-actions .guest-button { max-width: none; }
+.directory { margin-top: 1rem; color: var(--muted); font-size: .9rem; }
+.directory summary { cursor: pointer; padding-block: .6rem; }
+.comments .child-comment { margin-left: 1rem; border-left: 2px solid var(--border); padding-left: .7rem; }
+.help-nav a { position: relative; flex-direction: column; min-height: 58px; font-size: .8rem; gap: .12rem; color: var(--muted); }
+.help-nav a[href="/publish"] svg { border-radius: 6px; background: var(--green); color: #fff; padding: 2px; }
+.help-nav .help-unread { position: absolute; left: 53%; top: .15rem; }
+html { scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
+@media (max-width: 38rem) {
+  .help-shell .field :is(input, textarea, select), .help-shell .compact-field select { font-size: 16px; }
+  .help-shell { padding-top: .75rem; }
+}

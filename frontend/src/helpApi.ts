@@ -6,7 +6,7 @@ export type Point = [number, number];
 export type Radius = 500 | 1000 | 3000;
 export type Status = 'open' | 'in_progress' | 'resolved' | 'expired' | 'cancelled';
 export type Profile = { id: string; nickname: string };
-export type Account = Profile & { username: string; share_presence: boolean; discoverable: boolean };
+export type Account = Profile & { username: string; is_demo: boolean; share_presence: boolean; discoverable: boolean };
 
 export interface RequestItem {
   id: number;
@@ -16,12 +16,14 @@ export interface RequestItem {
   created_at: string;
   expires_at: number;
   status: Status;
+  reward_cents: number;
 }
 
 export interface RequestPreview extends RequestItem {
   summary: string;
   distance_m: number;
-  response_count: number;
+  comment_count: number;
+  has_offered: boolean;
 }
 
 export interface Discovery {
@@ -35,7 +37,7 @@ export interface RequestDetail extends RequestItem {
   is_owner: boolean;
   response_count: number;
   chat_id: number | null;
-  replies: { id: number; author_id: string; nickname: string; created_at: string; content: string }[];
+  replies: { id: number; parent_id: number | null; author_id: string; nickname: string; created_at: string; content: string }[];
   offers: { helper_id: string; nickname: string; status: 'pending' | 'accepted' | 'declined' }[];
 }
 
@@ -57,14 +59,37 @@ export const requestPath = (id: number | string) => '/api/help/requests/' + id;
 export const requestLink = (id: number | string) => '/requests/' + id;
 export const chatPath = (id: number | string) => '/api/help/chats/' + id;
 
-export function locationPayload(position: GeolocationPosition) {
+function coordinates(position: GeolocationPosition) {
   const { latitude, longitude, accuracy } = position.coords;
-  if (accuracy > 500) throw new Error('定位精度不足。请在信号较好的地方重试。');
+  if (!Number.isFinite(latitude) || Math.abs(latitude) > 90 || !Number.isFinite(longitude) ||
+      Math.abs(longitude) > 180 || !Number.isFinite(accuracy) || accuracy < 0) throw new Error('设备返回的位置无效，请重新定位。');
   return { lat: Number(latitude.toFixed(3)), lon: Number(longitude.toFixed(3)), accuracy };
 }
 
+export function locationPayload(position: GeolocationPosition) {
+  const point = coordinates(position);
+  if (point.accuracy > 500) throw new Error('目前只有大致位置。发布需要 500 米以内的精度，请开启精确位置或到开阔处重试。');
+  return point;
+}
+
 export function useHelpArea(account: Account | null | undefined) {
-  const [area, setArea] = useState(defaultAreas[0]);
+  const [area, setArea] = useState(() => {
+    try {
+      const last = JSON.parse(sessionStorage.getItem('nearhelp-browse') ?? 'null');
+      if (last && Date.now() - last.time < 3600000 && Array.isArray(last.point) && last.point.length === 2 &&
+          last.point.every(Number.isFinite) && Math.abs(last.point[0]) <= 90 && Math.abs(last.point[1]) <= 180) {
+        return { name: '上次浏览区域', point: last.point as Point };
+      }
+    } catch { /* Private browsing can restrict session storage. */ }
+    return defaultAreas[0];
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('nearhelp-browse', JSON.stringify({
+        point: area.point.map(value => Number(value.toFixed(3))), time: Date.now(),
+      }));
+    } catch { /* The area still works for this page. */ }
+  }, [area]);
   const [radius, setRadius] = useState<Radius>(500);
   const [position, setPosition] = useState<GeolocationPosition>();
   const [locating, setLocating] = useState(false);
@@ -75,16 +100,18 @@ export function useHelpArea(account: Account | null | undefined) {
   function choose(point: Point, name: string) {
     attempt.current += 1;
     followsDevice.current = false;
+    setPosition(undefined);
     setLocating(false);
     setError('');
     setArea({ point, name });
   }
 
   function usePosition(current: GeolocationPosition) {
-    const coarse = locationPayload(current);
+    const coarse = coordinates(current);
     followsDevice.current = true;
     setPosition(current);
-    setArea({ name: '当前位置附近', point: [coarse.lat, coarse.lon] });
+    setError('');
+    setArea({ name: coarse.accuracy > 500 ? '设备大致位置' : '当前位置附近', point: [coarse.lat, coarse.lon] });
   }
 
   async function locate() {
@@ -96,21 +123,16 @@ export function useHelpArea(account: Account | null | undefined) {
       if (id !== attempt.current) return;
       usePosition(current);
     } catch (reason) {
-      if (id === attempt.current) setError(reason instanceof Error
-        ? reason.message : '暂时无法定位。你仍可手动选区浏览。');
+      if (id === attempt.current) {
+        setPosition(undefined);
+        if (followsDevice.current) setArea(previous => ({ ...previous, name: '上次浏览区域' }));
+        followsDevice.current = false;
+        setError(reason instanceof Error ? reason.message : '暂时无法定位。你仍可手动选区浏览。');
+      }
     } finally {
       if (id === attempt.current) setLocating(false);
     }
   }
-
-  useEffect(() => {
-    // An existing browser grant can be reused without showing a new prompt.
-    let current = true;
-    navigator.permissions?.query({ name: 'geolocation' }).then((permission) => {
-      if (current && attempt.current === 0 && permission.state === 'granted') void locate();
-    }).catch(() => {});
-    return () => { current = false; };
-  }, []);
 
   const [sharingError, setSharingError] = useState('');
   const sharing = account?.share_presence;
@@ -192,7 +214,7 @@ export function useDiscovery(region: HelpArea, viewer: string | null | undefined
       }
     }
     void load();
-    const timer = window.setInterval(load, 12000);
+    const timer = window.setInterval(load, 6000);
     document.addEventListener('visibilitychange', load);
     return () => {
       controller.abort();

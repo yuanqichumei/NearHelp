@@ -10,7 +10,7 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException, Path as ApiPath, Request
 from pydantic import BaseModel, StringConstraints
 
-from .config import database_path
+from .config import database_path, demo_enabled
 from .auth import auth_router, require_account, same_origin
 from .db import DEFAULT_COMMUNITY, connect, initialize
 from .hot_topics import list_hot_topics
@@ -117,6 +117,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
                 await task
 
     app = FastAPI(title="NearHelp", lifespan=lifespan)
+    app.state.demo_guests = demo_enabled()
     app.include_router(location_router(path))
     app.include_router(places_router(path))
     app.include_router(auth_router(path))

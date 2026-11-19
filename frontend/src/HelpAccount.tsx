@@ -44,7 +44,7 @@ export function AccountPage({ account, update, returnTo }: {
   if (account) return <ProfilePage key={account.id} account={account} update={update} />;
   return <section className="card detail help-form">
     <h1>{register ? '创建账号' : '登录 NearHelp'}</h1>
-    <p className="quiet">游客可浏览。发布需求、回复和私信需要登录。</p>
+    <p className="quiet">使用账号可在不同设备上继续之前的互助。</p>
     <form onSubmit={signIn}>
       <fieldset disabled={busy}>
         {register && <label className="field">公开昵称<input required maxLength={24} value={nickname}
@@ -84,6 +84,7 @@ function ProfilePage({ account, update }: { account: Account; update: (value: Ac
   return <>
     <section className="card detail help-form">
       <h1>{account.nickname}</h1>
+      {account.is_demo && <p className="quiet">这是本浏览器的访客身份。刷新后可继续使用，清除网站数据会失去访问记录的凭证。 <Link href="/login">使用已有账号</Link></p>}
       <h2>附近隐私</h2>
       <label className="help-checkbox"><input type="checkbox" checked={account.share_presence} disabled={busy}
         onChange={(event) => void save('/api/help/preferences', {
@@ -92,13 +93,13 @@ function ProfilePage({ account, update }: { account: Account; update: (value: Ac
       <label className="help-checkbox"><input type="checkbox" checked={account.discoverable} disabled={busy}
         onChange={(event) => void save('/api/help/preferences', {
           share_presence: account.share_presence, discoverable: event.target.checked,
-        }, update)} />允许附近的登录用户发现我的公开昵称</label>
+        }, update)} />允许附近用户发现我的公开昵称</label>
       <p className="quiet">开启统计并授权定位后，前台页面才会上报粗略位置。</p>
       {error && <p className="error" role="alert">{error}</p>}
-      <button className="guest-button" disabled={busy} onClick={() => void save('/api/auth/logout', {}, () => {
+      {!account.is_demo && <button className="guest-button" disabled={busy} onClick={() => void save('/api/auth/logout', {}, () => {
         update(null);
         navigate('/', true);
-      })}>退出登录</button>
+      })}>退出登录</button>}
     </section>
     <section className="card detail">
       <h2>我参与的需求</h2>

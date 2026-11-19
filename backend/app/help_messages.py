@@ -4,7 +4,7 @@ import time
 
 from fastapi import APIRouter, HTTPException, Request
 
-from .auth import require_account, same_origin
+from .auth import require_help_user, same_origin
 from .db import connect
 from .help_requests import RequestId, Text, blocked, throttle
 
@@ -29,7 +29,7 @@ def messages_router(path):
     def inbox(request: Request):
         now = time.time()
         with connect(path) as connection:
-            actor = require_account(connection, request)["id"]
+            actor = require_help_user(connection, request)["id"]
             pending = connection.execute(
                 """SELECT o.request_id,t.title,COUNT(*) AS offers FROM help_offers o
                    JOIN help_requests h ON h.topic_id=o.request_id JOIN topics t ON t.id=h.topic_id
@@ -58,7 +58,7 @@ def messages_router(path):
     @router.get("/chats/{request_id}")
     def messages(request_id: RequestId, request: Request, before: int | None = None):
         with connect(path) as connection:
-            actor = require_account(connection, request)["id"]
+            actor = require_help_user(connection, request)["id"]
             item = conversation(connection, request_id, actor)
             rows = connection.execute(
                 """SELECT id,account_id=?,content,created_at FROM help_messages
@@ -79,7 +79,7 @@ def messages_router(path):
         now = time.time()
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            actor = require_account(connection, request)["id"]
+            actor = require_help_user(connection, request)["id"]
             conversation(connection, request_id, actor)
             throttle(connection, request, actor, "message", now, 30)
             message_id = connection.execute(
@@ -94,7 +94,7 @@ def messages_router(path):
         now = time.time()
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            actor = require_account(connection, request)["id"]
+            actor = require_help_user(connection, request)["id"]
             conversation(connection, request_id, actor)
             throttle(connection, request, actor, "read", now, 30)
             connection.execute(

@@ -37,7 +37,12 @@ export default function HelpMap({ region, data }: { region: HelpArea; data?: Dis
     circle.current?.setLatLng([lat, lon]).setRadius(region.radius);
   }, [lat, lon, region.radius]);
   useEffect(() => {
-    if (!region.position || !map.current) return;
+    if (!region.position) {
+      self.current?.remove();
+      self.current = undefined;
+      return;
+    }
+    if (!map.current) return;
     const { latitude, longitude } = region.position.coords;
     self.current ??= L.circleMarker([latitude, longitude], {
       radius: 7, color: '#fff', fillColor: '#17614b', fillOpacity: 1,

@@ -29,7 +29,7 @@ export function Inbox({ data, error }: { data?: InboxData; error?: Error }) {
 
 export function ChatPage({ id, refreshInbox }: { id: string; refreshInbox: () => void }) {
   const path = chatPath(id);
-  const { data, refresh, error } = usePolling<Conversation>(path, 4000);
+  const { data, refresh, error } = usePolling<Conversation>(path, 2500);
   const [older, setOlder] = useState<Message[]>([]);
   const [more, setMore] = useState<boolean>();
   const [loading, setLoading] = useState(false);

@@ -4,8 +4,9 @@ import type { ReactNode } from 'react';
 export const characters = (value: string) => Array.from(value).length;
 export const dateFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
 
-export function Icon({ name, size = 20 }: { name: 'chat' | 'plus' | 'close' | 'person'; size?: number }) {
+export function Icon({ name, size = 20 }: { name: 'chat' | 'plus' | 'close' | 'person' | 'pin'; size?: number }) {
   const paths = {
+    pin: 'M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z M14.5 10a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z',
     chat: 'M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.4-3.2A7.5 7.5 0 1 1 20 11.5Z M9 11.5h.1 m3.4 0h.1 m3.4 0h.1',
     plus: 'M12 5v14M5 12h14',
     close: 'm6 6 12 12M18 6 6 18',

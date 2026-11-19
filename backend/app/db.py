@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS topics (
 CREATE INDEX IF NOT EXISTS topics_community ON topics(community_slug, id DESC);
 CREATE TABLE IF NOT EXISTS comments (
     id INTEGER PRIMARY KEY,
+    parent_id INTEGER REFERENCES comments(id),
     topic_id INTEGER NOT NULL REFERENCES topics(id),
     guest_id TEXT NOT NULL,
     nickname TEXT NOT NULL,
@@ -105,6 +106,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     username TEXT NOT NULL UNIQUE,
     nickname TEXT NOT NULL,
     password_hash TEXT NOT NULL,
+    is_demo INTEGER NOT NULL DEFAULT 0,
     share_presence INTEGER NOT NULL DEFAULT 0,
     discoverable INTEGER NOT NULL DEFAULT 0
 );
@@ -128,7 +130,8 @@ CREATE TABLE IF NOT EXISTS help_requests (
     lon REAL,
     expires_at REAL NOT NULL,
     status TEXT NOT NULL DEFAULT 'open'
-        CHECK (status IN ('open', 'in_progress', 'resolved', 'cancelled'))
+        CHECK (status IN ('open', 'in_progress', 'resolved', 'cancelled')),
+    reward_cents INTEGER NOT NULL DEFAULT 0 CHECK (reward_cents BETWEEN 0 AND 1000000)
 );
 CREATE INDEX IF NOT EXISTS help_requests_area ON help_requests(status, lat, expires_at);
 CREATE TABLE IF NOT EXISTS help_offers (
@@ -187,6 +190,15 @@ def initialize(path: Path):
     with connect(path) as connection:
         connection.execute("PRAGMA journal_mode = WAL")
         connection.executescript(SCHEMA)
+        connection.execute("BEGIN IMMEDIATE")
+        # Existing databases retain their topics, accounts, messages and row IDs.
+        for table, column, definition in (
+            ("accounts", "is_demo", "INTEGER NOT NULL DEFAULT 0"),
+            ("help_requests", "reward_cents", "INTEGER NOT NULL DEFAULT 0 CHECK (reward_cents BETWEEN 0 AND 1000000)"),
+            ("comments", "parent_id", "INTEGER REFERENCES comments(id)"),
+        ):
+            if column not in {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
         connection.execute("INSERT OR IGNORE INTO communities (slug) VALUES (?)", (DEFAULT_COMMUNITY,))
 
 

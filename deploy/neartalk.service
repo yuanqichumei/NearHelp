@@ -1,0 +1,21 @@
+[Unit]
+Description=NearTalk API
+After=network.target
+
+[Service]
+User=neartalk
+Group=neartalk
+WorkingDirectory=/opt/neartalk/backend
+Environment=NEARTALK_DB_PATH=/var/lib/neartalk/neartalk.sqlite3
+ExecStart=/opt/neartalk/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8010 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=3
+StateDirectory=neartalk
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

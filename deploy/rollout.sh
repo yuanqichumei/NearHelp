@@ -64,6 +64,7 @@ for attempt in 1 2 3 4 5 6 7 8 9 10; do
     sleep 1
 done
 curl -fsS http://127.0.0.1:8010/api/health
+curl -fsS http://127.0.0.1:8010/api/auth/me -o /dev/null
 curl -fsS 'http://127.0.0.1:8010/api/regions/topics?lat=22.34&lon=114.17&scope=5' -o /dev/null
 systemctl is-active neartalk
 trap - EXIT

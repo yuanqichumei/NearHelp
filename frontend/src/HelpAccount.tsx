@@ -43,7 +43,7 @@ export function AccountPage({ account, update, returnTo }: {
 
   if (account) return <ProfilePage key={account.id} account={account} update={update} />;
   return <section className="card detail help-form">
-    <h1>{register ? '创建账号' : '登录 NearTalk'}</h1>
+    <h1>{register ? '创建账号' : '登录 NearHelp'}</h1>
     <p className="quiet">游客可浏览。发布需求、回复和私信需要登录。</p>
     <form onSubmit={signIn}>
       <fieldset disabled={busy}>

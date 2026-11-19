@@ -74,8 +74,8 @@ function Workspace({ account, update, path, region, authError }: {
   return <>
     <header className="site-header">
       <div className="shell topbar">
-        <Link className="brand" href="/" aria-label="NearTalk 首页">
-          <span className="brand-icon"><Icon name="chat" size={25} /></span><span>NearTalk</span>
+        <Link className="brand" href="/" aria-label="NearHelp 首页">
+          <span className="brand-icon"><Icon name="chat" size={25} /></span><span>NearHelp</span>
         </Link>
         <div className="help-top-right">
           <span className="help-top-area">{region.area.name}</span>

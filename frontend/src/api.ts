@@ -76,22 +76,25 @@ export function post<T>(path: string, body: object) {
   });
 }
 
-export function usePolling<T>(path: string) {
+export function usePolling<T>(path: string | null, interval = 2000) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<Error>();
   const refresh = useRef<() => void>(() => {});
 
   useEffect(() => {
+    if (!path) return;
+    const endpoint = path;
     let active: AbortController | undefined;
     let stopped = false;
     async function load(force = false) {
+      if (document.hidden && !force) return;
       if (active && !force) return;
       active?.abort();
       const request = new AbortController();
       active = request;
       const timeout = window.setTimeout(() => request.abort(), 8000);
       try {
-        const result = await api<T>(path, { signal: request.signal });
+        const result = await api<T>(endpoint, { signal: request.signal });
         if (stopped || active !== request) return;
         setData(result);
         setError(undefined);
@@ -108,13 +111,16 @@ export function usePolling<T>(path: string) {
 
     refresh.current = () => void load(true);
     void load();
-    const timer = window.setInterval(() => void load(), 2000);
+    const timer = window.setInterval(() => void load(), interval);
+    const visible = () => void load();
+    document.addEventListener('visibilitychange', visible);
     return () => {
       stopped = true;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', visible);
       active?.abort();
     };
-  }, [path]);
+  }, [path, interval]);
 
   return { data, error, refresh: () => refresh.current() };
 }

@@ -11,8 +11,9 @@ BOB = {"guest_id": str(uuid4()), "nickname": "访客乙"}
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, signup):
     with TestClient(create_app(tmp_path / "neartalk.sqlite3")) as session:
+        signup(session, "alice", ALICE["nickname"])
         yield session
 
 
@@ -23,9 +24,11 @@ def test_health_and_default_community(client):
     assert client.get(TOPICS).json() == []
 
 
-def test_independent_clients_share_posts_and_restart_persists(tmp_path):
+def test_independent_clients_share_posts_and_restart_persists(tmp_path, signup):
     db = tmp_path / "neartalk.sqlite3"
     with TestClient(create_app(db)) as alice, TestClient(create_app(db)) as bob:
+        signup(alice, "alice", ALICE["nickname"])
+        signup(bob, "bob", BOB["nickname"])
         response = alice.post(TOPICS, json={**ALICE, "title": "  午饭去哪里？ ", "content": "你好" * 90})
         assert response.status_code == 201
         topic_id = response.json()["id"]
@@ -72,7 +75,7 @@ def test_invalid_comments_and_unknown_community(client):
     assert client.get(f"/api/communities/unknown/topics/{topic_id}").status_code == 404
 
 
-def test_limits_apply_to_topic_and_comment_writes(client):
+def test_limits_apply_to_topic_and_comment_writes(client, signup):
     topic = {**ALICE, "title": "标题", "content": "正文"}
     for _ in range(3):
         response = client.post(TOPICS, json=topic)
@@ -81,6 +84,7 @@ def test_limits_apply_to_topic_and_comment_writes(client):
     throttled = client.post(TOPICS, json=topic)
     assert throttled.status_code == 429
     assert throttled.headers["retry-after"] == "60"
+    signup(client, "bob", BOB["nickname"])
     assert client.post(TOPICS, json={**topic, **BOB}).status_code == 201
     for _ in range(12):
         assert client.post(comments, json={**BOB, "content": "回复"}).status_code == 201

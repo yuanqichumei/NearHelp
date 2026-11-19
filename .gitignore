@@ -1,6 +1,5 @@
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
 backend/.venv/
 backend/data/

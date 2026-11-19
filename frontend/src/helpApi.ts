@@ -1,0 +1,204 @@
+import { useEffect, useRef, useState } from 'react';
+import { api, post } from './api';
+import { readPosition, visitorSession } from './location';
+
+export type Point = [number, number];
+export type Radius = 500 | 1000 | 3000;
+export type Status = 'open' | 'in_progress' | 'resolved' | 'expired' | 'cancelled';
+export type Profile = { id: string; nickname: string };
+export type Account = Profile & { username: string; share_presence: boolean; discoverable: boolean };
+
+export interface RequestItem {
+  id: number;
+  author_id: string;
+  nickname: string;
+  title: string;
+  created_at: string;
+  expires_at: number;
+  status: Status;
+}
+
+export interface RequestPreview extends RequestItem {
+  summary: string;
+  distance_m: number;
+  response_count: number;
+}
+
+export interface Discovery {
+  requests: RequestPreview[];
+  active_band: string;
+  users: Profile[];
+}
+
+export interface RequestDetail extends RequestItem {
+  content: string;
+  is_owner: boolean;
+  response_count: number;
+  chat_id: number | null;
+  replies: { id: number; author_id: string; nickname: string; created_at: string; content: string }[];
+  offers: { helper_id: string; nickname: string; status: 'pending' | 'accepted' | 'declined' }[];
+}
+
+export interface InboxData {
+  pending: { request_id: number; title: string; offers: number }[];
+  chats: { request_id: number; title: string; nickname: string; unread: number }[];
+}
+
+export type Message = { id: number; mine: boolean; content: string; created_at: string };
+export type Conversation = { title: string; nickname: string; peer_id: string; messages: Message[]; has_older: boolean };
+
+export const defaultAreas = [
+  { name: '香港城市大学', point: [22.338, 114.172] as Point },
+  { name: '深圳福田', point: [22.544, 114.058] as Point },
+  { name: '广州天河', point: [23.13, 113.324] as Point },
+];
+
+export const requestPath = (id: number | string) => '/api/help/requests/' + id;
+export const requestLink = (id: number | string) => '/requests/' + id;
+export const chatPath = (id: number | string) => '/api/help/chats/' + id;
+
+export function locationPayload(position: GeolocationPosition) {
+  const { latitude, longitude, accuracy } = position.coords;
+  if (accuracy > 500) throw new Error('定位精度不足。请在信号较好的地方重试。');
+  return { lat: Number(latitude.toFixed(3)), lon: Number(longitude.toFixed(3)), accuracy };
+}
+
+export function useHelpArea(account: Account | null | undefined) {
+  const [area, setArea] = useState(defaultAreas[0]);
+  const [radius, setRadius] = useState<Radius>(500);
+  const [position, setPosition] = useState<GeolocationPosition>();
+  const [locating, setLocating] = useState(false);
+  const [error, setError] = useState('');
+  const attempt = useRef(0);
+  const followsDevice = useRef(false);
+
+  function choose(point: Point, name: string) {
+    attempt.current += 1;
+    followsDevice.current = false;
+    setLocating(false);
+    setError('');
+    setArea({ point, name });
+  }
+
+  function usePosition(current: GeolocationPosition) {
+    const coarse = locationPayload(current);
+    followsDevice.current = true;
+    setPosition(current);
+    setArea({ name: '当前位置附近', point: [coarse.lat, coarse.lon] });
+  }
+
+  async function locate() {
+    const id = ++attempt.current;
+    setLocating(true);
+    setError('');
+    try {
+      const current = await readPosition();
+      if (id !== attempt.current) return;
+      usePosition(current);
+    } catch (reason) {
+      if (id === attempt.current) setError(reason instanceof Error
+        ? reason.message : '暂时无法定位。你仍可手动选区浏览。');
+    } finally {
+      if (id === attempt.current) setLocating(false);
+    }
+  }
+
+  useEffect(() => {
+    // An existing browser grant can be reused without showing a new prompt.
+    let current = true;
+    navigator.permissions?.query({ name: 'geolocation' }).then((permission) => {
+      if (current && attempt.current === 0 && permission.state === 'granted') void locate();
+    }).catch(() => {});
+    return () => { current = false; };
+  }, []);
+
+  const [sharingError, setSharingError] = useState('');
+  const sharing = account?.share_presence;
+  const accountId = account?.id;
+  const hasPosition = Boolean(position);
+  useEffect(() => {
+    setSharingError('');
+    if (!accountId || !sharing || !hasPosition) return;
+    let stopped = false;
+    let pending = false;
+    let lastSent = 0;
+    async function heartbeat() {
+      if (stopped || document.hidden || pending || Date.now() - lastSent < 55000) return;
+      pending = true;
+      try {
+        const current = await readPosition();
+        if (stopped || document.hidden) return;
+        const body = locationPayload(current);
+        setPosition(current);
+        if (followsDevice.current) {
+          setArea((previous) => previous.point[0] === body.lat && previous.point[1] === body.lon
+            ? previous : { name: '当前位置附近', point: [body.lat, body.lon] });
+        }
+        await post('/api/help/presence', body);
+        lastSent = Date.now();
+        if (!stopped) setSharingError('');
+      } catch {
+        if (!stopped) setSharingError('无法更新活跃位置，请重新定位后再试。');
+      } finally {
+        pending = false;
+      }
+    }
+    void heartbeat();
+    const timer = window.setInterval(heartbeat, 60000);
+    document.addEventListener('visibilitychange', heartbeat);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', heartbeat);
+    };
+  }, [accountId, sharing, hasPosition]);
+
+  return { area, radius, setRadius, choose, locate, usePosition, position, locating, error, sharingError };
+}
+
+export type HelpArea = ReturnType<typeof useHelpArea>;
+
+export function useDiscovery(region: HelpArea, viewer: string | null | undefined, enabled: boolean) {
+  const { radius } = region;
+  const [lat, lon] = region.area.point;
+  const key = [viewer, lat, lon, radius].join('/');
+  const [result, setResult] = useState<{ key: string; data?: Discovery; error?: string }>();
+  useEffect(() => {
+    if (!enabled || viewer === undefined) return;
+    let pending = false;
+    let sessionReady = viewer !== null;
+    const controller = new AbortController();
+    async function load() {
+      if (controller.signal.aborted || pending || document.hidden) return;
+      pending = true;
+      try {
+        if (!sessionReady) {
+          await visitorSession();
+          sessionReady = true;
+        }
+        if (controller.signal.aborted || document.hidden) return;
+        const data = await api<Discovery>('/api/help/nearby', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lon, radius }), signal: controller.signal,
+        });
+        if (!controller.signal.aborted) setResult({ key, data });
+      } catch (reason) {
+        if (!controller.signal.aborted) setResult((previous) => ({
+          key, data: previous?.key === key ? previous.data : undefined,
+          error: reason instanceof Error ? reason.message : '暂时无法读取附近需求。',
+        }));
+      } finally {
+        pending = false;
+      }
+    }
+    void load();
+    const timer = window.setInterval(load, 12000);
+    document.addEventListener('visibilitychange', load);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', load);
+    };
+  }, [key, enabled, viewer, lat, lon, radius]);
+  return result?.key === key ? result : undefined;
+}

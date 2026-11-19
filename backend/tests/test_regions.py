@@ -10,8 +10,9 @@ SZ = {"lat": 22.545, "lon": 114.06}
 TOPICS = "/api/communities/cityu-hackathon/topics"
 
 
-def test_home_feed_filters_radius_city_and_keeps_original_discussions(tmp_path):
+def test_home_feed_filters_radius_city_and_keeps_original_discussions(tmp_path, signup):
     with TestClient(create_app(tmp_path / "geo.sqlite3")) as client:
+        signup(client, "visitor", "访客")
         guest = {"guest_id": str(uuid4()), "nickname": "访客", "content": "在这里讨论"}
 
         def publish(title, point=None):

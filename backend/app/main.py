@@ -11,8 +11,11 @@ from fastapi import FastAPI, HTTPException, Path as ApiPath, Request
 from pydantic import BaseModel, StringConstraints
 
 from .config import database_path
+from .auth import auth_router, require_account, same_origin
 from .db import DEFAULT_COMMUNITY, connect, initialize
 from .hot_topics import list_hot_topics
+from .help_messages import messages_router
+from .help_requests import HELP_COMMUNITY, cleanup_help, help_router
 from .location import Latitude, Longitude, Point, cleanup, location_router
 from .places import places_router
 from .regions import Scope, coarse_point, regional_stats, regional_topics
@@ -45,11 +48,15 @@ class NewComment(Guest):
 
 
 def require_community(connection, slug):
-    if connection.execute("SELECT 1 FROM communities WHERE slug = ?", (slug,)).fetchone() is None:
+    if slug == HELP_COMMUNITY or connection.execute(
+        "SELECT 1 FROM communities WHERE slug = ?", (slug,),
+    ).fetchone() is None:
         raise HTTPException(404, "社区不存在")
 
 
 def require_topic(connection, slug, topic_id):
+    if slug == HELP_COMMUNITY:
+        raise HTTPException(404, "话题不存在")
     topic = connection.execute(
         f"SELECT {TOPIC_FIELDS} FROM topics t WHERE t.community_slug = ? AND t.id = ?",
         (slug, topic_id),
@@ -88,7 +95,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
         def purge():
             with connect(path) as connection:
-                cleanup(connection, time.time())
+                now = time.time()
+                cleanup(connection, now)
+                cleanup_help(connection, now)
 
         async def periodically():
             while True:
@@ -110,6 +119,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     app = FastAPI(title="NearTalk", lifespan=lifespan)
     app.include_router(location_router(path))
     app.include_router(places_router(path))
+    app.include_router(auth_router(path))
+    app.include_router(help_router(path))
+    app.include_router(messages_router(path))
 
     @app.middleware("http")
     async def no_api_cache(request: Request, call_next):
@@ -154,14 +166,16 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     @app.post("/api/communities/{slug}/topics", status_code=201)
     def create_topic(slug: str, topic: NewTopic, request: Request):
+        same_origin(request)
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
             require_community(connection, slug)
-            guest_id = str(topic.guest_id)
+            account = require_account(connection, request)
+            guest_id = account["id"]
             record_write(connection, request, guest_id, "topic")
             cursor = connection.execute(
                 "INSERT INTO topics (community_slug, guest_id, nickname, title, content) VALUES (?, ?, ?, ?, ?)",
-                (slug, guest_id, topic.nickname, topic.title, topic.content),
+                (slug, guest_id, account["nickname"], topic.title, topic.content),
             )
             if slug == DEFAULT_COMMUNITY and topic.region is not None:
                 connection.execute("INSERT INTO topic_regions VALUES (?, ?, ?)",
@@ -185,14 +199,16 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     @app.post("/api/communities/{slug}/topics/{topic_id}/comments", status_code=201)
     def create_comment(slug: str, topic_id: TopicId, comment: NewComment, request: Request):
+        same_origin(request)
         with connect(path) as connection:
             connection.execute("BEGIN IMMEDIATE")
             require_topic(connection, slug, topic_id)
-            guest_id = str(comment.guest_id)
+            account = require_account(connection, request)
+            guest_id = account["id"]
             record_write(connection, request, guest_id, "comment")
             cursor = connection.execute(
                 "INSERT INTO comments (topic_id, guest_id, nickname, content) VALUES (?, ?, ?, ?)",
-                (topic_id, guest_id, comment.nickname, comment.content),
+                (topic_id, guest_id, account["nickname"], comment.content),
             )
             return dict(connection.execute(
                 f"SELECT {COMMENT_FIELDS} FROM comments WHERE id = ?", (cursor.lastrowid,),

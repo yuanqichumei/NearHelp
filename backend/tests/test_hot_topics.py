@@ -8,7 +8,7 @@ from app.main import create_app
 from app.zhihu import ZhihuError, ZhihuHotList, ZhihuItem
 
 
-def test_hot_topics_cache_and_discussion(tmp_path, monkeypatch):
+def test_hot_topics_cache_and_discussion(tmp_path, monkeypatch, signup):
     path = tmp_path / "near.sqlite3"
     monkeypatch.setenv("ZHIHU_ACCESS_SECRET", "server-only-test-secret")
     monkeypatch.setenv("ZHIHU_CACHE_TTL", "1800")
@@ -27,6 +27,7 @@ def test_hot_topics_cache_and_discussion(tmp_path, monkeypatch):
 
     monkeypatch.setattr(hot_topics, "fetch_hot_list", fetch)
     with TestClient(create_app(path)) as client:
+        signup(client, "reader", "访客")
         response = client.get("/api/hot-topics")
         assert "server-only-test-secret" not in response.text
         [topic] = response.json()

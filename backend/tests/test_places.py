@@ -9,13 +9,15 @@ from app.db import connect
 from app.main import create_app
 
 
-def test_real_catalog_place_is_created_on_first_visit_and_reuses_topics(tmp_path, monkeypatch):
+def test_real_catalog_place_is_created_on_first_visit_and_reuses_topics(tmp_path, monkeypatch, signup):
     monkeypatch.delenv("GEOAPIFY_PLACES_KEY", raising=False)
     now = [datetime(2026, 1, 1, 15, 59, tzinfo=timezone.utc).timestamp()]
     monkeypatch.setattr(places, "time", SimpleNamespace(time=lambda: now[0]))
     path = tmp_path / "places.sqlite3"
     guest = {"guest_id": str(uuid4()), "nickname": "访客"}
     with TestClient(create_app(path)) as a, TestClient(create_app(path)) as b:
+        signup(a, "alice", "访客甲")
+        signup(b, "bob", "访客乙")
         assert a.get("/api/places/nearby?lat=-88&lon=0").json()["places"] == []
         results = a.get("/api/places/nearby?lat=22.337&lon=114.172").json()["places"]
         library = next(place for place in results if place["name"] == "邵逸夫图书馆")

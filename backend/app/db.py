@@ -100,6 +100,73 @@ CREATE TABLE IF NOT EXISTS topic_regions (
     lat REAL NOT NULL,
     lon REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    nickname TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    share_presence INTEGER NOT NULL DEFAULT 0,
+    discoverable INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS account_sessions (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    expires_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS account_sessions_expiry ON account_sessions(expires_at);
+CREATE TABLE IF NOT EXISTS help_presence (
+    account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+    lat REAL NOT NULL,
+    lon REAL NOT NULL,
+    seen_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS help_presence_expiry ON help_presence(seen_at);
+CREATE TABLE IF NOT EXISTS help_requests (
+    topic_id INTEGER PRIMARY KEY REFERENCES topics(id),
+    author_id TEXT NOT NULL REFERENCES accounts(id),
+    lat REAL,
+    lon REAL,
+    expires_at REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open'
+        CHECK (status IN ('open', 'in_progress', 'resolved', 'cancelled'))
+);
+CREATE INDEX IF NOT EXISTS help_requests_area ON help_requests(status, lat, expires_at);
+CREATE TABLE IF NOT EXISTS help_offers (
+    request_id INTEGER NOT NULL REFERENCES help_requests(topic_id),
+    helper_id TEXT NOT NULL REFERENCES accounts(id),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined')),
+    offered_at REAL NOT NULL,
+    PRIMARY KEY (request_id, helper_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS help_one_helper ON help_offers(request_id) WHERE status = 'accepted';
+CREATE TABLE IF NOT EXISTS help_conversations (
+    request_id INTEGER PRIMARY KEY REFERENCES help_requests(topic_id),
+    owner_id TEXT NOT NULL REFERENCES accounts(id),
+    helper_id TEXT NOT NULL REFERENCES accounts(id)
+);
+CREATE TABLE IF NOT EXISTS help_messages (
+    id INTEGER PRIMARY KEY,
+    request_id INTEGER NOT NULL REFERENCES help_conversations(request_id),
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    read_at REAL
+);
+CREATE INDEX IF NOT EXISTS help_messages_chat ON help_messages(request_id, id);
+CREATE TABLE IF NOT EXISTS account_blocks (
+    blocker_id TEXT NOT NULL REFERENCES accounts(id),
+    blocked_id TEXT NOT NULL REFERENCES accounts(id),
+    PRIMARY KEY (blocker_id, blocked_id)
+);
+CREATE TABLE IF NOT EXISTS help_reports (
+    id INTEGER PRIMARY KEY,
+    reporter_id TEXT NOT NULL REFERENCES accounts(id),
+    target_id TEXT NOT NULL REFERENCES accounts(id),
+    request_id INTEGER NOT NULL REFERENCES help_requests(topic_id),
+    reason TEXT NOT NULL,
+    reported_at REAL NOT NULL,
+    UNIQUE (reporter_id, target_id, request_id)
+);
 """
 
 

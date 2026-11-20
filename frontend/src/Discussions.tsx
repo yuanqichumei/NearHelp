@@ -11,7 +11,11 @@ import './discussions.css';
 
 type Featured = { id: number; title: string; venue: string; count: number };
 type Answer = { id: number; content: string; parent_id: number | null; nickname: string; created_at: string };
+type Reference = { id: string; title: string; author: string; url: string; votes: number };
+type InsightPoint = { text: string; sources: string[] };
+type Insights = { zhihu: Reference[]; local: InsightPoint[]; comparison: InsightPoint[] };
 type Thread = { title: string; venue: string; active: boolean; answers: Answer[]; angle: string; zhihu_url: string;
+  insights: Insights;
   older: number | null; themes: string[]; summary: { contributors: number; extracts: { comment_id: number; text: string }[];
     themes: { label: string; people: number; comment_id: number }[] } };
 type Catalog = { questions: { key: string; title: string; url: string }[];
@@ -50,6 +54,7 @@ export function DiscussionPage({ id, region, account, login }: {
   const [draft, setDraft] = useState('');
   const [parent, setParent] = useState<Answer>();
   const [useLocation, setUseLocation] = useState(false);
+  const [aiConsent, setAiConsent] = useState(false);
   const [theme, setTheme] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -75,8 +80,9 @@ export function DiscussionPage({ id, region, account, login }: {
       if (useLocation && fixTime === undefined) throw new Error('请重新定位，或取消勾选后直接发表。');
       await post(apiPath + '/' + id + '/answers', { content: draft.trim(), parent_id: parent?.id,
         theme: useLocation && !parent ? theme : '',
+        ai_consent: useLocation && !parent && aiConsent,
         ...(useLocation && pos && fixTime !== undefined && { location: { ...locationPayload(pos), timestamp: fixTime / 1000 } }) });
-      setDraft(''); setTheme(''); setParent(undefined); setBefore(undefined); refresh();
+      setDraft(''); setTheme(''); setAiConsent(false); setParent(undefined); setBefore(undefined); refresh();
     } catch (reason) { setMessage(problem(reason)); } finally { setBusy(false); }
   }
   if (error) return <p className="notice" role="alert">{error.message} <Link href="/discussions">返回附近讨论</Link></p>;
@@ -91,12 +97,14 @@ export function DiscussionPage({ id, region, account, login }: {
         <label className="field">{parent ? '写下回复' : '说说我的看法'}<textarea id="discussion-draft" maxLength={500} required
           value={draft} onChange={e => setDraft(e.target.value)} /></label>
         {!parent && <label className="help-checkbox"><input type="checkbox" checked={useLocation}
-          onChange={e => setUseLocation(e.target.checked)} />使用设备定位，让会场 1 公里内的回答参与观点小结</label>}
+          onChange={e => { setUseLocation(e.target.checked); setAiConsent(false); }} />使用设备定位，让会场 1 公里内的回答参与观点小结</label>}
         {useLocation && !parent && <><button type="button" className="text-button" disabled={region.locating} onClick={() => void region.locate()}>
           {region.locating ? '正在定位…' : region.position ? '重新定位' : '获取当前位置'}</button>
           <small>{region.error || (region.position ? '已取得设备位置' : region.privacyHint)}</small>
           <label className="field">我的关注点（可选）<select value={theme} onChange={e => setTheme(e.target.value)}>
-            <option value="">直接发表</option>{data.themes.map(t => <option key={t}>{t}</option>)}</select></label></>}
+            <option value="">直接发表</option>{data.themes.map(t => <option key={t}>{t}</option>)}</select></label>
+          <label className="help-checkbox"><input type="checkbox" checked={aiConsent}
+            onChange={e => setAiConsent(e.target.checked)} />同意将这条公开回答的文字交给 DeepSeek 整理</label></>}
         {message && <p className="error" role="alert">{message}</p>}
         <button className="primary" disabled={!draft.trim() || busy}>{busy ? '发送中…' : parent ? '发送回复' : '发表看法'}</button>
       </form>}
@@ -106,13 +114,15 @@ export function DiscussionPage({ id, region, account, login }: {
         {a.parent_id && <button className="text-button" onClick={() => showSource(a.parent_id!)}>回复了 #{a.parent_id} 的回答</button>}
         <p className="post-content">{a.content}</p>
         {!a.parent_id && data.active && <button className="text-button" onClick={() => {
-          setParent(a); setUseLocation(false); document.getElementById('discussion-draft')?.focus();
+          setParent(a); setUseLocation(false); setAiConsent(false); document.getElementById('discussion-draft')?.focus();
         }}>回复</button>}
       </article>)}
       {before && <button className="text-button" onClick={() => setBefore(undefined)}>回到最新发言</button>}
       {data.older && <button className="guest-button" onClick={() => setBefore(data.older!)}>更早的发言</button>}
     </section>
     <section className="card detail"><h2>附近观点小结</h2>
+      {!!data.insights?.local.length && <><p className="quiet">DeepSeek 根据同意参与 AI 整理的公开回答归纳。</p>
+        <InsightPoints points={data.insights.local} showSource={showSource} zhihu={[]} /></>}
       {data.summary.extracts.length ? <><p className="quiet">从 {data.summary.contributors} 位附近参与者的回答中摘录，每人最多一条。</p>
         {!!data.summary.themes.length && <p>大家主动标记的关注点：{data.summary.themes.map(t => <button className="text-button"
           key={t.label} onClick={() => showSource(t.comment_id)}>{t.label}（{t.people} 人）</button>)}</p>}
@@ -121,8 +131,55 @@ export function DiscussionPage({ id, region, account, login }: {
         <p className="quiet">至少 3 位附近参与者留下有内容的回答后，这里会摘出不同的看法。</p>}</section>
     <details className="card detail"><summary>换个角度想 · AI 视角</summary>
       <p>{data.angle}</p><small>随本期问题预先生成</small></details>
+    {!!data.insights?.comparison.length && <section className="card detail"><h2>附近与知乎观点对照</h2>
+      <p className="quiet">DeepSeek 根据本期发言和所选知乎回答归纳。</p>
+      <InsightPoints points={data.insights.comparison} showSource={showSource} zhihu={data.insights.zhihu} /></section>}
+    {!!data.insights?.zhihu.length && <section className="card detail"><h2>知乎相关回答</h2>
+      <ul>{data.insights.zhihu.map(ref => <li key={ref.id}>
+        <a href={ref.url} rel="noopener noreferrer" target="_blank">{ref.title}</a>
+        <p className="quiet">{ref.author} · {ref.votes} 赞同（检索时）</p>
+      </li>)}</ul></section>}
     {data.zhihu_url && <a className="card talk-reading" href={data.zhihu_url} rel="noopener noreferrer" target="_blank">知乎相关讨论 <span>查看原文 ↗</span></a>}
+    {account?.is_admin && <InsightRefresh id={id} title={data.title} refresh={refresh} />}
   </article>;
+}
+
+function InsightPoints({ points, showSource, zhihu }: {
+  points: InsightPoint[]; showSource: (id: number) => void; zhihu: Reference[];
+}) {
+  return <ul className="insight-points">{points.map((point, index) => <li key={index}>
+    <p>{point.text}</p>
+    <div className="insight-sources">{point.sources.map(id => {
+      const source = zhihu.find(item => item.id === id);
+      return source ? <a key={id} href={source.url} rel="noopener noreferrer" target="_blank">知乎 · {source.author}</a>
+        : <button key={id} className="text-button" onClick={() => showSource(Number(id.slice(1)))}>附近回答 #{id.slice(1)}</button>;
+    })}</div>
+  </li>)}</ul>;
+}
+
+function InsightRefresh({ id, title, refresh }: { id: string; title: string; refresh: () => void }) {
+  const [query, setQuery] = useState(title);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+  async function run(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setNote('');
+    try {
+      const result = await post<{ message: string }>(apiPath + '/' + id + '/insights', { query });
+      setNote(result.message);
+      refresh();
+    } catch (error) { setNote(problem(error)); } finally { setBusy(false); }
+  }
+  return <details className="card detail">
+    <summary>管理讨论参考资料</summary>
+    <form className="talk-form" onSubmit={run}>
+      <label className="field">知乎搜索关键词<input required minLength={2} maxLength={160} value={query} onChange={e => setQuery(e.target.value)} /></label>
+      <button className="primary" disabled={busy}>{busy ? '正在更新…' : '更新参考资料与 AI 小结'}</button>
+      {note && <p role="status">{note}</p>}
+    </form>
+  </details>;
 }
 
 export function DiscussionEditor({ region }: { region: HelpArea }) {

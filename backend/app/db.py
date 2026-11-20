@@ -191,6 +191,14 @@ CREATE TABLE IF NOT EXISTS discussion_themes (
     comment_id INTEGER PRIMARY KEY REFERENCES discussion_local(comment_id) ON DELETE CASCADE,
     theme TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS discussion_ai_consent (
+    comment_id INTEGER PRIMARY KEY REFERENCES discussion_local(comment_id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS discussion_insights (
+    topic_id INTEGER PRIMARY KEY REFERENCES discussion_rounds(topic_id) ON DELETE CASCADE,
+    payload TEXT NOT NULL,
+    updated_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS discussion_hidden (
     comment_id INTEGER PRIMARY KEY REFERENCES comments(id) ON DELETE CASCADE,
     hidden_at REAL NOT NULL

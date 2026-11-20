@@ -2,6 +2,7 @@ import io
 import json
 from types import SimpleNamespace
 from urllib.error import HTTPError
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -70,6 +71,25 @@ def test_missing_secret_stops_before_network(monkeypatch):
     use_response(monkeypatch, lambda *args, **kwargs: pytest.fail("Unexpected network call"))
     with pytest.raises(zhihu.ZhihuError, match="缺少 ZHIHU_ACCESS_SECRET"):
         zhihu.fetch_hot_list()
+
+
+def test_search_returns_only_attributable_answers(monkeypatch):
+    url = "https://www.zhihu.com/question/11/answer/22?utm_medium=openapi_platform&utm_source=test"
+    answer = {"ContentType": "Answer", "ContentID": "22", "Url": url, "Title": "分工讨论",
+              "AuthorName": "示例作者", "ContentText": "搜索摘要", "VoteUpCount": 13}
+
+    def open_response(request, timeout):
+        assert parse_qs(urlsplit(request.full_url).query) == {
+            "Query": ["大学分工"], "SortBy": ["VoteUpCount:desc"], "Count": ["10"],
+        }
+        assert request.get_header("Authorization") == "Bearer " + SECRET
+        return Response(json.dumps({"Code": 0, "Data": {"Items": [
+            answer, answer, {**answer, "ContentType": "Article"}, {**answer, "Url": "https://other.test/answer/1"},
+        ]}}).encode())
+
+    use_response(monkeypatch, open_response)
+    result, = zhihu.search_answers("大学分工")
+    assert result["url"] == url and result["votes"] == 13
 
 
 def test_timeout(monkeypatch):

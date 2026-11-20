@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from .auth import current_help_user, require_help_user, same_origin
 from .db import connect
 from .discussion_catalog import QUESTIONS, feature
+from .discussion_insights import cached_insights, refresh_insights
 from .help_requests import Discovery, Fix, NewComment, RequestId, throttle
 from .location import Point, distance
 from .moderation import require_admin
@@ -21,6 +22,11 @@ class AnswerLocation(Fix):
 class Answer(NewComment):
     location: AnswerLocation | None = None
     theme: str = Field(default="", max_length=16)
+    ai_consent: bool = False
+
+
+class InsightQuery(BaseModel):
+    query: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=160)]
 
 
 class Selection(Point):
@@ -44,6 +50,17 @@ ROUND = """SELECT d.*,t.title FROM discussion_rounds d JOIN topics t ON t.id=d.t
 def viewer_id(db, request):
     actor = current_help_user(db, request)
     return actor["id"] if actor else None
+
+
+def local_sources(db, topic_id, viewer):
+    return db.execute(f"""SELECT id,content,theme,ai_consent FROM (
+        SELECT c.id,c.content,s.theme,a.comment_id IS NOT NULL AS ai_consent,
+            row_number() OVER (PARTITION BY c.guest_id ORDER BY c.id DESC) AS n
+        FROM comments c JOIN discussion_local l ON c.id=l.comment_id
+        LEFT JOIN discussion_themes s ON s.comment_id=c.id
+        LEFT JOIN discussion_ai_consent a ON a.comment_id=c.id
+        WHERE c.topic_id=:id AND c.parent_id IS NULL AND length(trim(c.content))>=6 AND {VISIBLE}
+        ) WHERE n=1 ORDER BY id DESC LIMIT 80""", {"id": topic_id, "viewer": viewer}).fetchall()
 
 
 def summary(rows):
@@ -127,17 +144,25 @@ def discussion_router(path):
             rows = db.execute(f"""SELECT c.id,c.content,c.nickname,c.created_at,c.parent_id
                 FROM comments c WHERE c.topic_id=:id AND {VISIBLE} AND (:before IS NULL OR c.id<:before)
                 ORDER BY c.id DESC LIMIT 51""", args).fetchall()
-            sources = db.execute(f"""SELECT id,content,theme FROM (
-                SELECT c.id,c.content,s.theme,row_number() OVER (PARTITION BY c.guest_id ORDER BY c.id DESC) AS n
-                FROM comments c JOIN discussion_local l ON c.id=l.comment_id
-                LEFT JOIN discussion_themes s ON s.comment_id=c.id
-                WHERE c.topic_id=:id AND c.parent_id IS NULL AND length(trim(c.content))>=6 AND {VISIBLE}
-                ) WHERE n=1 ORDER BY id DESC LIMIT 80""", args).fetchall()
+            sources = local_sources(db, topic_id, args["viewer"])
             return {"id": topic_id, "title": row["title"], "venue": row["venue"], "active": bool(row["active"]),
                     "angle": QUESTIONS[row["question_key"]]["angle"], "zhihu_url": row["zhihu_url"],
                     "themes": QUESTIONS[row["question_key"]]["themes"],
                     "answers": [dict(r) for r in rows[:50]], "older": rows[49]["id"] if len(rows)>50 else None,
-                    "summary": summary(sources)}
+                    "summary": summary(sources), "insights": cached_insights(db, topic_id, sources)}
+
+    @router.post("/{topic_id}/insights")
+    def update_insights(topic_id: RequestId, body: InsightQuery, request: Request):
+        same_origin(request)
+        with connect(path) as db:
+            db.execute("BEGIN IMMEDIATE")
+            admin = require_admin(db, request)
+            throttle(db, request, admin["id"], "discussion-insights", time.time(), 3)
+            row = db.execute(ROUND + " WHERE d.topic_id=?", (topic_id,)).fetchone()
+            if row is None:
+                raise HTTPException(404, "找不到这场讨论。")
+            sources = local_sources(db, topic_id, None)
+        return refresh_insights(path, topic_id, row["title"], body.query, sources)
 
     @router.post("/{topic_id}/answers", status_code=201)
     def answer(topic_id: RequestId, body: Answer, request: Request):
@@ -163,6 +188,8 @@ def discussion_router(path):
             loc = body.location
             if loc and -10 <= now-loc.timestamp <= 300 and distance(loc.lat, loc.lon, row["lat"], row["lon"]) <= 1000:
                 db.execute("INSERT INTO discussion_local VALUES (?)", (cid,))
+                if body.ai_consent and body.parent_id is None:
+                    db.execute("INSERT INTO discussion_ai_consent VALUES (?)", (cid,))
                 if body.theme and body.parent_id is None:
                     db.execute("INSERT INTO discussion_themes VALUES (?,?)", (cid, body.theme))
             return {"id": cid}

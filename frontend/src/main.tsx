@@ -11,6 +11,7 @@ import type { Account, HelpArea, InboxData } from './helpApi';
 import { Link, navigate, usePath } from './navigation';
 import { Icon } from './ui';
 import './style.css';
+import { DiscussionList, DiscussionPage, DiscussionEditor } from './Discussions';
 
 const HelpMap = lazy(() => import('./MapPage'));
 const AdminRequests = lazy(() => import('./AdminRequests'));
@@ -60,7 +61,10 @@ function Workspace({ account, update, path, region }: {
   }
 
   let page;
+  const discussion = /^\/discussions\/([1-9]\d*)\/?$/.exec(path)?.[1];
   if (path === '/') page = <HelpFeed region={region} data={discovery?.data} error={discovery?.error} account={account} signIn={login} />;
+  else if (path === '/discussions') page = <DiscussionList region={region} />;
+  else if (discussion) page = <DiscussionPage key={discussion} id={discussion} region={region} account={account} login={login} />;
   else if (path === '/map') page = <Suspense fallback={<p role="status">正在加载地图…</p>}>
     <HelpMap region={region} data={discovery?.data} />
   </Suspense>;
@@ -69,7 +73,7 @@ function Workspace({ account, update, path, region }: {
   else if (account === undefined) page = <p className="notice" role="status">正在准备你的身份…</p>;
   else if (path === '/admin' || path === '/admin/') {
     if (!account || account.is_demo) page = <AccountPage account={null} update={update} returnTo="/admin" adminLogin />;
-    else if (account.is_admin) page = <Suspense fallback={<p role="status">正在载入需求管理…</p>}><AdminRequests /></Suspense>;
+    else if (account.is_admin) page = <Suspense fallback={<p role="status">正在载入需求管理…</p>}><DiscussionEditor region={region} /><AdminRequests /></Suspense>;
     else page = <section className="notice"><h1>当前账号没有管理权限</h1>
       <Link className="back" href="/account">返回我的账号</Link></section>;
   }
@@ -98,11 +102,15 @@ function Workspace({ account, update, path, region }: {
     </header>
     <main className="shell help-shell">
       {region.sharingError && <p className="notice" role="status">{region.sharingError}</p>}
+      {(path === '/' || path === '/discussions') && <div className="discovery-tabs" aria-label="附近内容">
+        <Link href="/" aria-current={path === '/' ? 'page' : undefined}>附近求助</Link>
+        <Link href="/discussions" aria-current={path === '/discussions' ? 'page' : undefined}>附近讨论</Link>
+      </div>}
       {page}
     </main>
     <nav className="help-nav" aria-label="主导航">
       <div className="shell">
-        <Link href="/" aria-current={path === '/' || path === '/map' ? 'page' : undefined}><Icon name="pin" />附近</Link>
+        <Link href="/" aria-current={path === '/' || path === '/map' || path.startsWith('/discussions') ? 'page' : undefined}><Icon name="pin" />附近</Link>
         <Link href="/publish" aria-current={path === '/publish' ? 'page' : undefined}><Icon name="plus" />发布</Link>
         <Link href="/messages" aria-current={path.startsWith('/messages') ? 'page' : undefined}>
           <Icon name="chat" />消息{unread > 0 && <span className="help-unread" aria-label={unread + ' 条待处理消息'}>{unread}</span>}

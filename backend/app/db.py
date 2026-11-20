@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
+from .discussion_catalog import seed
 
 DEFAULT_COMMUNITY = "cityu-hackathon"
 SCHEMA = """
@@ -174,6 +175,26 @@ CREATE TABLE IF NOT EXISTS help_reports (
     UNIQUE (reporter_id, target_id, request_id)
 );
 CREATE INDEX IF NOT EXISTS help_reports_request ON help_reports(request_id);
+CREATE TABLE IF NOT EXISTS discussion_rounds (
+    topic_id INTEGER PRIMARY KEY REFERENCES topics(id),
+    venue TEXT NOT NULL,
+    lat REAL NOT NULL, lon REAL NOT NULL,
+    question_key TEXT NOT NULL,
+    zhihu_url TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_feature_per_venue ON discussion_rounds(venue) WHERE active=1;
+CREATE TABLE IF NOT EXISTS discussion_local (
+    comment_id INTEGER PRIMARY KEY REFERENCES comments(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS discussion_themes (
+    comment_id INTEGER PRIMARY KEY REFERENCES discussion_local(comment_id) ON DELETE CASCADE,
+    theme TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS discussion_hidden (
+    comment_id INTEGER PRIMARY KEY REFERENCES comments(id) ON DELETE CASCADE,
+    hidden_at REAL NOT NULL
+);
 """
 
 
@@ -207,6 +228,7 @@ def initialize(path: Path):
             if column not in {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}:
                 connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
         connection.execute("INSERT OR IGNORE INTO communities (slug) VALUES (?)", (DEFAULT_COMMUNITY,))
+        seed(connection)
 
 
 if __name__ == "__main__":

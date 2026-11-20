@@ -5,6 +5,7 @@ import { locationPayload, requestLink, requestPath } from './helpApi';
 import type { Account, HelpArea, RequestDetail, RequestItem } from './helpApi';
 import { remainingTime, Reward, statusNames } from './HelpFeed';
 import { Link, navigate } from './navigation';
+import { recentPositionTime } from './location';
 import { characters, Field, Meta, Modal } from './ui';
 
 export function PublishPage({ region }: { region: HelpArea }) {
@@ -25,7 +26,7 @@ export function PublishPage({ region }: { region: HelpArea }) {
     setBusy(true);
     setError('');
     try {
-      if (!region.position || Date.now() - region.position.timestamp > 300000) throw new Error('请重新获取当前位置后发布，已填写的内容会保留。');
+      if (!region.position || recentPositionTime(region.position) === undefined) throw new Error('请重新获取当前位置后发布，已填写的内容会保留。');
       const location = locationPayload(region.position);
       const item = await post<RequestItem>('/api/help/requests', { title, content, minutes, location, reward_cents: cents });
       navigate(requestLink(item.id), true);
@@ -37,7 +38,7 @@ export function PublishPage({ region }: { region: HelpArea }) {
   return <section className="card detail help-form">
     <h1>发布需求</h1>
     <div className="location-line"><p className="quiet" role="status">{region.locating ? '正在定位…' : region.position
-      ? '定位成功 · 精度约 ' + Math.ceil(region.position.coords.accuracy) + ' 米' : '开启定位，将需求发给附近的人。'}</p>
+      ? '定位成功 · 精度约 ' + Math.ceil(region.position.coords.accuracy) + ' 米' : region.privacyHint || '开启定位，将需求发给附近的人。'}</p>
       <button className="guest-button" disabled={region.locating || busy} onClick={() => void region.locate()}>
         {region.position || region.error ? '重新定位' : '获取当前位置'}</button></div>
     {region.error && <p className="error" role="alert">{region.error}</p>}

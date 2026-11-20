@@ -112,7 +112,7 @@ def auth_router(path):
             actor = str(uuid4())
             nickname = "邻友·" + actor[:6].upper()
             connection.execute(
-                "INSERT INTO accounts(id, username, nickname, password_hash, is_demo) VALUES (?,?,?,'',1)",
+                "INSERT INTO accounts(id, username, nickname, password_hash, is_demo, share_presence, discoverable) VALUES (?,?,?,'',1,1,1)",
                 (actor, "demo:" + actor, nickname),
             )
             open_session(connection, request, response, actor, DEMO_COOKIE)
@@ -138,14 +138,14 @@ def auth_router(path):
             digest = new_password_hash(password)
             with connect(path) as connection:
                 connection.execute(
-                    "INSERT INTO accounts (id, username, nickname, password_hash) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO accounts (id, username, nickname, password_hash, share_presence, discoverable) VALUES (?, ?, ?, ?, 1, 1)",
                     (user_id, username, nickname, digest),
                 )
                 open_session(connection, request, response, user_id)
         except sqlite3.IntegrityError:
             raise HTTPException(409, "这个账号名已被使用。") from None
         return public_account({"id": user_id, "username": username, "nickname": nickname,
-                               "is_demo": False, "is_admin": False, "share_presence": False, "discoverable": False})
+                               "is_demo": False, "is_admin": False, "share_presence": True, "discoverable": True})
 
     @router.post("/login")
     def login(body: Credentials, request: Request, response: Response):

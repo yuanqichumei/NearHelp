@@ -27,7 +27,7 @@ UNSUPPORTED_TASKS = (
 
 
 class Discovery(Point):
-    radius: Literal[500, 1000, 3000] = 500
+    radius: Literal[500, 1000, 3000] = 1000
 
 
 class Fix(Point):

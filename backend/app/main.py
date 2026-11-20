@@ -12,6 +12,8 @@ from pydantic import BaseModel, StringConstraints
 
 from .config import database_path, demo_enabled
 from .auth import auth_router, require_account, same_origin
+from .discussion_catalog import COMMUNITY as DISCUSSION_COMMUNITY
+from .discussions import discussion_router
 from .db import DEFAULT_COMMUNITY, connect, initialize
 from .hot_topics import list_hot_topics
 from .help_messages import messages_router
@@ -49,14 +51,14 @@ class NewComment(Guest):
 
 
 def require_community(connection, slug):
-    if slug == HELP_COMMUNITY or connection.execute(
+    if slug in (HELP_COMMUNITY, DISCUSSION_COMMUNITY) or connection.execute(
         "SELECT 1 FROM communities WHERE slug = ?", (slug,),
     ).fetchone() is None:
         raise HTTPException(404, "社区不存在")
 
 
 def require_topic(connection, slug, topic_id):
-    if slug == HELP_COMMUNITY:
+    if slug in (HELP_COMMUNITY, DISCUSSION_COMMUNITY):
         raise HTTPException(404, "话题不存在")
     topic = connection.execute(
         f"SELECT {TOPIC_FIELDS} FROM topics t WHERE t.community_slug = ? AND t.id = ?",
@@ -125,6 +127,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     app.include_router(help_router(path))
     app.include_router(messages_router(path))
     app.include_router(moderation_router(path))
+    app.include_router(discussion_router(path))
 
     @app.middleware("http")
     async def no_api_cache(request: Request, call_next):

@@ -8,6 +8,7 @@ import { resolve, join } from 'node:path';
 import { chromium, webkit } from 'playwright-core';
 import { preview } from 'vite';
 import { verifyModeration } from './moderation.mjs';
+import { verifyDiscussionRound } from './discussions.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'nearhelp-ui-'));
 const db = join(directory, 'demo.sqlite3');
@@ -63,6 +64,24 @@ try {
   const [a, b] = await Promise.all([phone(375), phone(360)]);
   const label = await a.getByRole('button', { name: /^邻友·/ }).innerText();
   assert.notEqual(label, await b.getByRole('button', { name: /^邻友·/ }).innerText());
+  for (const p of [a, b]) {
+    await p.getByRole('link', { name: '附近讨论', exact: true }).click();
+    await p.getByRole('link', { name: /如果 AI 写了九成代码/ }).click();
+  }
+  const answer = '调试和承担责任也是作者做的工作。';
+  await a.getByLabel('说说我的看法').fill(answer);
+  await button(a, '发表看法').click();
+  await exact(b, answer).waitFor();
+  await button(b, '回复').click();
+  await b.getByLabel('写下回复').fill('我们的队伍也碰到了类似的问题。');
+  await button(b, '发送回复').click();
+  await exact(a, '我们的队伍也碰到了类似的问题。').waitFor();
+  await a.getByText('换个角度想 · AI 视角').click();
+  await exact(a, '随本期问题预先生成').waitFor();
+  assert.match(await a.getByRole('link', { name: /知乎相关讨论/ }).getAttribute('href'), /^https:\/\/www\.zhihu\.com\//);
+  await checkLayout(a);
+  for (const p of [a, b]) await nav(p, '附近').click();
+  console.log('PASS: guest venue discovery, answers, cross-device replies and attributed perspectives.');
   for (const p of [a, b]) {
     await button(p, '获取当前位置').click();
     await p.getByText(/定位成功 · 精度约/).waitFor();
@@ -167,6 +186,7 @@ try {
   await faults.getByText(/精度约 3000 米/).waitFor();
   await checkLayout(faults);
   console.log('PASS: click-to-locate, permission denied, manual browsing, timeout fallback, unavailable and coarse fixes, publish location checks.');
+  await verifyDiscussionRound({ backend, python, db, phone, origin });
 } finally {
   await browser?.close();
   if (server) {

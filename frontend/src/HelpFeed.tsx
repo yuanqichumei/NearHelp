@@ -49,7 +49,7 @@ export function AreaControls({ region, compact = false }: { region: HelpArea; co
       </button> : <span className="location-name"><Icon name="pin" size={18} />{areaName}</span>}
         <p className="location-hint" role="status">{region.locating ? '正在获取设备位置…' : region.position
           ? '定位成功 · 精度约 ' + Math.ceil(region.position.coords.accuracy) + ' 米'
-          : region.error ? '可手动选区继续浏览' : '开启定位，发现附近的需求。'}</p></div>
+          : region.error ? '可手动选区继续浏览' : region.privacyHint || '开启定位，发现附近的需求。'}</p></div>
       <button className="guest-button" onClick={() => void region.locate()} disabled={region.locating}>
         {region.locating ? '正在定位…' : region.position || region.error ? '重新定位' : '获取当前位置'}
       </button>

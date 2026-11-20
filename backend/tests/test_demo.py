@@ -34,6 +34,7 @@ def test_guest_flow_privacy_and_cleanup(demo, cents):
     owner, helper, other = [start(phone).json() for phone in (a, b, c)]
     assert len({owner["id"], helper["id"], other["id"]}) == 3
     assert all(person["is_demo"] for person in (owner, helper, other))
+    assert all(person["share_presence"] and person["discoverable"] for person in (owner, helper, other))
     assert a.get("/api/auth/me").json() == start(a).json() == owner
     assert b.post("/api/auth/session", headers={"Origin": "https://elsewhere.test"}).status_code == 403
     created = a.post("/api/help/requests", json={**demand(cents), "author_id": other["id"]})
@@ -43,6 +44,9 @@ def test_guest_flow_privacy_and_cleanup(demo, cents):
     verdict = url + "/offers/" + helper["id"]
     location = demand()["location"]
     card, = b.post("/api/help/nearby", json=location).json()["requests"]
+    edge = {**location, "lat": 0.007}
+    assert b.post("/api/help/nearby", json=edge).json()["requests"][0]["id"] == rid
+    assert not b.post("/api/help/nearby", json={**edge, "radius": 500}).json()["requests"]
     assert card["reward_cents"] == cents and card["comment_count"] == 0
     assert not {"lat", "lon", "accuracy", "location"} & card.keys()
     root = b.post(url + "/replies", json={"content": "我这里有充电器，可以借给你。"}).json()["id"]
@@ -126,9 +130,9 @@ def test_existing_database_upgrade_is_repeatable(tmp_path):
         db.execute("ALTER TABLE help_requests DROP COLUMN hidden_at")
         db.execute("ALTER TABLE help_requests DROP COLUMN pinned_until")
         db.execute("INSERT INTO accounts(id,username,nickname,password_hash) VALUES('old','old','原昵称','hash')")
-        db.execute("INSERT INTO topics(community_slug,guest_id,nickname,title,content) VALUES('cityu-hackathon','old','原昵称','旧帖','旧内容')")
-        db.execute("INSERT INTO help_requests(topic_id,author_id,expires_at) VALUES(1,'old',0)")
-        db.execute("INSERT INTO comments(topic_id,guest_id,nickname,content) VALUES(1,'old','原昵称','旧评论')")
+        old_id = db.execute("INSERT INTO topics(community_slug,guest_id,nickname,title,content) VALUES('cityu-hackathon','old','原昵称','旧帖','旧内容')").lastrowid
+        db.execute("INSERT INTO help_requests(topic_id,author_id,expires_at) VALUES(?,'old',0)", (old_id,))
+        db.execute("INSERT INTO comments(topic_id,guest_id,nickname,content) VALUES(?,'old','原昵称','旧评论')", (old_id,))
     initialize(path)
     initialize(path)
     with connect(path) as db:

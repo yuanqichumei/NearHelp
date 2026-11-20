@@ -53,6 +53,9 @@ with tempfile.TemporaryDirectory(dir=snapshot.parent) as directory:
             raise SystemExit("Migration integrity check failed")
         for table in ("accounts", "topics", "comments", "help_requests", "help_messages"):
             query = "SELECT COUNT(*) FROM " + table
+            if table == "topics":
+                # Initialization may add the editorial starter question.
+                query += " WHERE community_slug != 'nearhelp-discussions'"
             if previous.execute(query).fetchone() != upgraded.execute(query).fetchone():
                 raise SystemExit("Migration changed the number of records in " + table)
 PY

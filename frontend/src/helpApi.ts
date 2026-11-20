@@ -91,7 +91,7 @@ export function useHelpArea(account: Account | null | undefined) {
       }));
     } catch { /* The area still works for this page. */ }
   }, [area]);
-  const [radius, setRadius] = useState<Radius>(500);
+  const [radius, setRadius] = useState<Radius>(1000);
   const [position, setPosition] = useState<GeolocationPosition>();
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState('');
@@ -176,7 +176,10 @@ export function useHelpArea(account: Account | null | undefined) {
     };
   }, [accountId, sharing, hasPosition]);
 
-  return { area, radius, setRadius, choose, locate, usePosition, position, locating, error, sharingError };
+  const privacyHint = sharing ? (account?.discoverable
+    ? '定位后参与附近统计，附近用户可见你的昵称。可在「我的」关闭。'
+    : '定位后参与附近活跃统计。可在「我的」关闭。') : '';
+  return { area, radius, setRadius, choose, locate, usePosition, position, locating, error, sharingError, privacyHint };
 }
 
 export type HelpArea = ReturnType<typeof useHelpArea>;

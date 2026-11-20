@@ -4,6 +4,7 @@ import { statusNames } from './HelpFeed';
 import type { Status } from './helpApi';
 import { Link } from './navigation';
 import { dateFormat } from './ui';
+import { AdminDiscussionAnswers } from './AdminDiscussionAnswers';
 import './admin.css';
 
 type Visibility = 'all' | 'visible' | 'hidden';
@@ -28,6 +29,7 @@ export default function AdminRequests() {
   const path = '/api/admin/requests?visibility=' + filter + (before ? '&before=' + before : '');
   return <section className="admin-requests">
     <Link className="back" href="/account">返回我的账号</Link>
+    <AdminDiscussionAnswers />
     <div className="section-head admin-heading">
       <h1>管理公开需求</h1>
       <label className="compact-field"><span className="sr-only">显示范围</span>

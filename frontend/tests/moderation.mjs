@@ -32,6 +32,25 @@ export async function verifyModeration({ backend, python, db, phone, origin, vie
     await viewer.getByText(title, { exact: true }).waitFor();
     await admin.reload();
     await item.getByRole('button', { name: /^置顶/ }).waitFor();
+    const nearby = await viewer.request.post(new URL('/api/discussions/nearby', origin).href, { data: { lat: 22.338, lon: 114.172 } });
+    const discussionId = (await nearby.json())[0].id;
+    const publicPage = await viewer.context().newPage();
+    try {
+      await publicPage.goto(new URL('/discussions/' + discussionId, origin).href);
+      const text = '测试设备的公开回答可以下架并且可以恢复。';
+      await publicPage.getByLabel('说说我的看法').fill(text);
+      await publicPage.getByRole('button', { name: '发表看法', exact: true }).click();
+      await publicPage.getByText(text, { exact: true }).waitFor();
+      await admin.getByText('管理讨论发言', { exact: true }).click();
+      const answer = admin.getByRole('listitem').filter({ hasText: text });
+      admin.once('dialog', dialog => dialog.accept());
+      await answer.getByRole('button', { name: '下架发言' }).click();
+      await publicPage.getByText(text, { exact: true }).waitFor({ state: 'hidden' });
+      await admin.getByLabel('发言范围').selectOption('hidden');
+      await answer.getByRole('button', { name: '恢复发言' }).click();
+      await publicPage.getByText(text, { exact: true }).waitFor();
+      console.log('PASS: discussion answer hide/restore and visibility in another session.');
+    } finally { await publicPage.close(); }
     const profile = admin.getByRole('navigation').getByRole('link', { name: '我的', exact: true });
     await profile.click();
     await admin.getByRole('link', { name: '管理公开需求' }).waitFor();

@@ -18,6 +18,10 @@ class ModerationAction(BaseModel):
     action: Literal["hide", "restore", "pin", "unpin"]
 
 
+class AnswerAction(BaseModel):
+    action: Literal["hide", "restore"]
+
+
 def require_admin(connection, request):
     actor = require_help_user(connection, request)
     if actor["is_demo"] or not actor["is_admin"]:
@@ -76,5 +80,41 @@ def moderation_router(path):
                 connection.execute("UPDATE help_requests SET hidden_at=NULL WHERE topic_id=?", (request_id,))
             else:
                 connection.execute("UPDATE help_requests SET pinned_until=NULL WHERE topic_id=?", (request_id,))
+
+    @router.get("/discussion-answers")
+    def answers(request: Request, visibility: Literal["all", "visible", "hidden"] = "all",
+                before: Annotated[int, Query(gt=0, le=2**63 - 1)] | None = None):
+        visible = "own.comment_id IS NULL AND parent.comment_id IS NULL"
+        filters = {"visible": visible, "hidden": f"NOT ({visible})", "all": "1"}
+        with connect(path) as connection:
+            require_admin(connection, request)
+            rows = connection.execute(f"""SELECT c.id,c.content,c.nickname,c.created_at,
+                    c.parent_id,t.title,d.venue,own.comment_id IS NOT NULL AS hidden,
+                    parent.comment_id IS NOT NULL AS parent_hidden
+                FROM comments c JOIN discussion_rounds d ON d.topic_id=c.topic_id
+                JOIN topics t ON t.id=c.topic_id
+                LEFT JOIN discussion_hidden own ON own.comment_id=c.id
+                LEFT JOIN discussion_hidden parent ON parent.comment_id=c.parent_id
+                WHERE ({filters[visibility]}) AND (? IS NULL OR c.id<?)
+                ORDER BY c.id DESC LIMIT ?""", (before, before, PAGE_SIZE+1)).fetchall()
+            return {"items": [dict(row) for row in rows[:PAGE_SIZE]],
+                    "next_before": rows[PAGE_SIZE-1]["id"] if len(rows)>PAGE_SIZE else None}
+
+    @router.post("/discussion-answers/{comment_id}", status_code=204)
+    def moderate_answer(comment_id: RequestId, body: AnswerAction, request: Request):
+        same_origin(request)
+        now = time.time()
+        with connect(path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            actor = require_admin(connection, request)
+            throttle(connection, request, actor["id"], "moderate", now, 30)
+            if not connection.execute("""SELECT 1 FROM comments c JOIN discussion_rounds d
+                    ON d.topic_id=c.topic_id WHERE c.id=?""", (comment_id,)).fetchone():
+                raise HTTPException(404, "找不到这条讨论发言。")
+            if body.action == "hide":
+                connection.execute("INSERT OR IGNORE INTO discussion_hidden(comment_id,hidden_at) VALUES (?,?)",
+                                   (comment_id, now))
+            else:
+                connection.execute("DELETE FROM discussion_hidden WHERE comment_id=?", (comment_id,))
 
     return router

@@ -8,6 +8,14 @@ export async function visitorSession() {
 
 let pendingPosition: Promise<GeolocationPosition> | undefined;
 
+export function recentPositionTime(position?: GeolocationPosition): number | undefined {
+  if (!position || !Number.isFinite(position.timestamp)) return;
+  // Some WebKit providers return epoch microseconds. Both units must pass the same freshness check.
+  const millis = position.timestamp >= 1e14 ? position.timestamp / 1000 : position.timestamp;
+  const age = Date.now() - millis;
+  if (age >= -10000 && age <= 300000) return millis;
+}
+
 function fix(highAccuracy: boolean): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     // The native timeout starts after permission is decided. Allow time to read the prompt.

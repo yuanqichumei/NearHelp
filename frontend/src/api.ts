@@ -76,7 +76,7 @@ export function post<T>(path: string, body: object) {
   });
 }
 
-export function usePolling<T>(path: string | null, interval = 2000) {
+export function usePolling<T>(path: string | null, interval = 2000, postBody?: string) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<Error>();
   const refresh = useRef<() => void>(() => {});
@@ -94,7 +94,9 @@ export function usePolling<T>(path: string | null, interval = 2000) {
       active = request;
       const timeout = window.setTimeout(() => request.abort(), 8000);
       try {
-        const result = await api<T>(endpoint, { signal: request.signal });
+        const result = await api<T>(endpoint, { signal: request.signal, ...(postBody && {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: postBody,
+        }) });
         if (stopped || active !== request) return;
         setData(result);
         setError(undefined);
@@ -120,7 +122,7 @@ export function usePolling<T>(path: string | null, interval = 2000) {
       document.removeEventListener('visibilitychange', visible);
       active?.abort();
     };
-  }, [path, interval]);
+  }, [path, interval, postBody]);
 
   return { data, error, refresh: () => refresh.current() };
 }

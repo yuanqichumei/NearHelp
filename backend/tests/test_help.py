@@ -105,7 +105,8 @@ def test_account_sessions_location_privacy_and_expiry(tmp_path, signup):
         assert guest.post("/api/help/presence", json=LOCATION).status_code == 401
         for index, account in enumerate([first, second, third]):
             signup(account, f"user_{index}", f"参与者 {index}")
-            assert account.post("/api/help/presence", json=LOCATION).status_code == 403
+            me = account.get("/api/auth/me").json()
+            assert me["share_presence"] and me["discoverable"]
             assert account.post("/api/help/preferences", json={
                 "share_presence": True, "discoverable": index > 0,
             }).status_code == 200

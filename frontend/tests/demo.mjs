@@ -89,7 +89,7 @@ try {
   assert.equal(await a.getByRole('link', { name: /知乎相关讨论/ }).count(), 0);
   await nav(a, '我的').click();
   await button(a, '修改昵称').click();
-  await a.getByLabel('公开昵称').fill('会场校友');
+  await a.getByRole('textbox', { name: '公开昵称', exact: true }).fill('会场校友');
   await button(a, '保存昵称').click();
   await a.getByRole('heading', { name: '会场校友', exact: true }).waitFor();
   await b.locator('.talk-answer').filter({hasText: answer}).getByText(/会场校友/).waitFor();

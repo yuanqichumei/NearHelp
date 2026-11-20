@@ -80,7 +80,11 @@ export async function verifyDiscussionRound({ backend, python, db, phone, origin
     await admin.getByLabel('公开会场名称').fill('临时测试会场');
     await admin.getByLabel('浏览区域').selectOption('广州天河');
     await question.selectOption('tools');
-    assert(await admin.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const overflow = await admin.evaluate(() => [...document.querySelectorAll('main *')]
+      .filter(el => el.getBoundingClientRect().right > innerWidth + 1)
+      .map(el => el.tagName + '.' + el.className + ' ' + Math.round(el.getBoundingClientRect().right)));
+    assert.deepEqual(overflow, [], '会场编辑表单存在横向溢出：' + overflow.join(', '));
+    assert(await admin.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '会场编辑表单可横向滚动');
     await admin.getByRole('button', { name: '保存本期问题' }).click();
     await admin.getByText(/已更新「临时测试会场」/).waitFor();
     await selectVenue.selectOption('香港城市大学');

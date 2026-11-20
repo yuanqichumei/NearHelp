@@ -20,4 +20,7 @@
 .talk-answer p { overflow-wrap:anywhere; margin:.4rem 0; white-space:pre-wrap }
 .talk-thread blockquote { border-left:3px solid #9bbca6; padding:0 .8rem; margin:1rem 0; overflow-wrap:anywhere }
 .talk-reading { padding:1rem; text-decoration:none }
-.talk-form select,.talk-form input { min-width:0; max-width:100% }
+.talk-form, .talk-form .field { grid-template-columns:minmax(0,1fr); min-width:0 }
+.talk-form .field :is(select,input,textarea) { width:100%; min-width:0; max-width:100% }
+.talk-form select { overflow:hidden; text-overflow:ellipsis }
+.talk-form { overflow-x:clip; overflow-wrap:anywhere }

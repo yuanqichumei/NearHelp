@@ -1,7 +1,7 @@
 """Public venue questions and attributed extracts from nearby answers."""
 import re
 import time
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, StringConstraints
@@ -22,7 +22,11 @@ class AnswerLocation(Fix):
 class Answer(NewComment):
     location: AnswerLocation | None = None
     theme: str = Field(default="", max_length=16)
-    ai_consent: bool = False
+    ai_consent: bool = True
+
+
+class AnswerVote(BaseModel):
+    value: Literal[-1, 0, 1]
 
 
 class InsightQuery(BaseModel):
@@ -141,7 +145,10 @@ def discussion_router(path):
             if not row:
                 raise HTTPException(404, "找不到这场讨论。")
             args = {"id": topic_id, "viewer": viewer_id(db, request), "before": before}
-            rows = db.execute(f"""SELECT c.id,c.content,c.nickname,c.created_at,c.parent_id
+            rows = db.execute(f"""SELECT c.id,c.content,c.nickname,c.created_at,c.parent_id,
+                (SELECT count(*) FROM discussion_votes WHERE comment_id=c.id AND value=1) AS likes,
+                (SELECT count(*) FROM discussion_votes WHERE comment_id=c.id AND value=-1) AS dislikes,
+                coalesce((SELECT value FROM discussion_votes WHERE comment_id=c.id AND account_id=:viewer),0) AS my_vote
                 FROM comments c WHERE c.topic_id=:id AND {VISIBLE} AND (:before IS NULL OR c.id<:before)
                 ORDER BY c.id DESC LIMIT 51""", args).fetchall()
             sources = local_sources(db, topic_id, args["viewer"])
@@ -193,5 +200,23 @@ def discussion_router(path):
                 if body.theme and body.parent_id is None:
                     db.execute("INSERT INTO discussion_themes VALUES (?,?)", (cid, body.theme))
             return {"id": cid}
+
+    @router.post("/{topic_id}/votes/{comment_id}", status_code=204)
+    def vote(topic_id: RequestId, comment_id: RequestId, body: AnswerVote, request: Request):
+        same_origin(request)
+        with connect(path) as db:
+            db.execute("BEGIN IMMEDIATE")
+            account = require_help_user(db, request)
+            actor = account["id"]
+            if not db.execute(f"""SELECT 1 FROM comments c JOIN discussion_rounds d ON d.topic_id=c.topic_id
+                WHERE c.topic_id=:topic AND c.id=:id AND d.active=1 AND {VISIBLE}""",
+                {"topic": topic_id, "id": comment_id, "viewer": actor}).fetchone():
+                raise HTTPException(404, "找不到可以投票的回答。")
+            throttle(db, request, actor, "discussion-vote", time.time(), 40)
+            if body.value == 0:
+                db.execute("DELETE FROM discussion_votes WHERE comment_id=? AND account_id=?", (comment_id, actor))
+            else:
+                db.execute("""INSERT INTO discussion_votes(comment_id,account_id,value) VALUES (?,?,?)
+                    ON CONFLICT(comment_id,account_id) DO UPDATE SET value=excluded.value""", (comment_id, actor, body.value))
 
     return router

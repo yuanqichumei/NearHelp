@@ -19,10 +19,7 @@ export async function verifyDiscussionRound({ backend, python, db, phone, origin
       await page.context().setGeolocation({ latitude, longitude, accuracy: 20 });
       await page.getByRole('link', { name: '附近讨论', exact: true }).click();
       await page.getByRole('link', { name: /如果 AI 写了九成代码/ }).click();
-      await page.getByRole('checkbox', { name: /使用设备定位/ }).check();
-      await page.getByRole('button', { name: '获取当前位置', exact: true }).click();
-      await page.getByText('已取得设备位置').waitFor();
-      await page.getByLabel(/我的关注点/).selectOption(index === 2 ? '设计决策' : '对成品负责');
+      assert.equal(await page.locator('.talk-composer').getByRole('checkbox').count(), 0);
       await page.getByLabel('说说我的看法').fill(text);
       await page.getByRole('button', { name: '发表看法', exact: true }).click();
       await page.locator('.talk-answer').getByText(text, { exact: true }).waitFor();
@@ -31,8 +28,6 @@ export async function verifyDiscussionRound({ backend, python, db, phone, origin
     await viewer.bringToFront();
     await viewer.getByText(/从 3 位附近参与者的回答中摘录/).waitFor();
     assert.equal(await viewer.getByRole('button', { name: '查看原回答' }).count(), 3);
-    await viewer.getByRole('button', { name: '对成品负责（2 人）' }).click();
-    assert.match(await viewer.evaluate(() => document.activeElement?.id), /^answer-\d+$/);
     const first = viewer.locator('blockquote').first();
     const quote = await first.evaluate(el => el.firstChild.textContent.trim());
     await first.getByRole('button', { name: '查看原回答' }).click();
@@ -97,7 +92,7 @@ export async function verifyDiscussionRound({ backend, python, db, phone, origin
     await viewer.getByLabel('浏览区域').selectOption('广州天河');
     await viewer.getByRole('link', { name: /临时测试会场/ }).click();
     await viewer.getByRole('heading', { name: /哪一步交给 AI/ }).waitFor();
-    console.log('PASS: three local contributors, citations and theme counts, hide and restore, 320px layout, venue creation, question rotation, archived read-only thread and per-venue discovery.');
+    console.log('PASS: automatic local contribution, citations, hide and restore, 320px layout, venue creation, question rotation, archived read-only thread and per-venue discovery.');
   } finally {
     if (admin) await admin.context().close();
     await Promise.all(guests.map(page => page.context().close()));

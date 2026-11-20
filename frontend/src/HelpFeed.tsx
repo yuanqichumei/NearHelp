@@ -99,7 +99,13 @@ export function HelpFeed({ region, data, error, account, signIn }: {
       <AreaControls region={region} compact />
     </section>
     <div className="section-head feed-head nearby-heading">
-      <h1>附近需求</h1>
+      <div className="nearby-heading-main">
+        <h1>附近需求</h1>
+        {data && <p className="nearby-counts" aria-label="所选范围内的近期活跃人数与需求数">
+          <span>{data.active_band === 'hidden' ? '0–2' : data.active_band} 人最近活跃</span>
+          <span>{data.request_count ?? data.requests.length} 条待解决</span>
+        </p>}
+      </div>
       <Link className="map-link" href="/map"><Icon name="pin" size={16} />查看地图</Link>
     </div>
     {error && <p className="notice" role="status">{error}</p>}

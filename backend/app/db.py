@@ -194,6 +194,12 @@ CREATE TABLE IF NOT EXISTS discussion_themes (
 CREATE TABLE IF NOT EXISTS discussion_ai_consent (
     comment_id INTEGER PRIMARY KEY REFERENCES discussion_local(comment_id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS discussion_votes (
+    comment_id INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    value INTEGER NOT NULL CHECK(value IN (-1, 1)),
+    PRIMARY KEY (comment_id, account_id)
+);
 CREATE TABLE IF NOT EXISTS discussion_insights (
     topic_id INTEGER PRIMARY KEY REFERENCES discussion_rounds(topic_id) ON DELETE CASCADE,
     payload TEXT NOT NULL,

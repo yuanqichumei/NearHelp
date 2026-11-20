@@ -119,7 +119,7 @@ def test_account_sessions_location_privacy_and_expiry(tmp_path, signup):
             assert "HttpOnly" in response.headers["set-cookie"]
             assert same_user.post("/api/help/presence", json=LOCATION).status_code == 204
         assert guest.post("/api/help/nearby", json=LOCATION).json() == {
-            "requests": [], "active_band": "3–4", "users": [],
+            "requests": [], "request_count": 0, "active_band": "3–4", "users": [],
         }
         assert first.post("/api/help/nearby", json=LOCATION).json()["users"] == []
         assert same_user.post("/api/auth/logout", headers={"origin": "https://other.example"}).status_code == 403

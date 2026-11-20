@@ -28,6 +28,7 @@ export interface RequestPreview extends RequestItem {
 }
 
 export interface Discovery {
+  request_count: number;
   requests: RequestPreview[];
   active_band: string;
   users: Profile[];
@@ -123,6 +124,7 @@ export function useHelpArea(account: Account | null | undefined) {
       const current = await readPosition();
       if (id !== attempt.current) return;
       usePosition(current);
+      return current;
     } catch (reason) {
       if (id === attempt.current) {
         setPosition(undefined);

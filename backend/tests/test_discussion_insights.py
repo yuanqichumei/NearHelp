@@ -37,7 +37,7 @@ def test_admin_insights_uses_consent_and_discards_hidden_inputs(monkeypatch, tmp
         for index, guest in enumerate(guests):
             prompt = "同意整理的独立发言" if index < 3 else "未授权的独立发言"
             result = guest.post(path + "/answers", json={
-                "content": prompt + str(index), "location": fix, "ai_consent": index < 3,
+                "content": prompt + str(index), "location": fix, **({"ai_consent": False} if index == 3 else {}),
             })
             result.raise_for_status()
             if index == 0:
@@ -52,7 +52,7 @@ def test_admin_insights_uses_consent_and_discards_hidden_inputs(monkeypatch, tmp
         assert invocations == [False, True]
         assert info["local"] and info["comparison"]
         assert info["zhihu"][0]["url"] == sample["url"]
-        assert "text" not in info["zhihu"][0]
+        assert info["zhihu"][0]["text"] == sample["text"]
         assert guests[0].get(path).json()["insights"] == info
         assert invocations == [False, True]
         monkeypatch.setenv("ZHIHU_RAG_ENABLED", "false")

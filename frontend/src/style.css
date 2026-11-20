@@ -251,6 +251,10 @@ html { scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
 .home-location select { color: #163c30; width: 100%; }
 .nearby-heading { margin-bottom: .65rem; }
 .nearby-heading h1 { font-size: clamp(1.55rem, 4.5vw, 1.85rem); color: #173d30; }
+.nearby-heading-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .7rem; min-width: 0; }
+.nearby-counts { display: flex; flex-wrap: wrap; gap: .15rem .55rem; margin: 0; color: #48665a; font-size: .8rem; }
+.nearby-counts span { white-space: nowrap; }
+.nearby-heading .map-link { flex-shrink: 0; }
 .nearby-heading .map-link { font-size: .875rem; font-weight: 650; }
 .nearby-list { gap: .85rem; }
 .nearby-request { padding: 1.05rem 1.1rem .7rem; box-shadow: 0 2px 7px #183d2e09; }

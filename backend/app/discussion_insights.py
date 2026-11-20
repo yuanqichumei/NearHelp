@@ -24,9 +24,10 @@ def cached_insights(db, topic_id, sources):
     # Keep a generated result only while all input answers are still visible to this reader.
     # An uncited answer can also have influenced the result.
     valid = set(payload["inputs"]) <= eligible_ids(sources)
+    references = [ref for ref in payload["zhihu"] if ref.get("text")]
     return {
-        "zhihu": payload["zhihu"], "local": payload["local"] if valid else [],
-        "comparison": payload["comparison"] if valid and rag_enabled() else [],
+        "zhihu": references, "local": payload["local"] if valid else [],
+        "comparison": payload["comparison"] if valid and references and rag_enabled() else [],
     }
 
 
@@ -42,7 +43,7 @@ def refresh_insights(path, topic_id, title, query, sources):
     messages = []
     try:
         refs = search_answers(query)
-        payload["zhihu"] = [{key: value for key, value in item.items() if key != "text"} for item in refs]
+        payload["zhihu"] = refs
         messages.append(f"找到 {len(refs)} 条知乎回答。")
     except ZhihuError as error:
         refs = []
@@ -67,7 +68,7 @@ def refresh_insights(path, topic_id, title, query, sources):
             except DeepSeekError as error:
                 messages.append(str(error))
     else:
-        messages.append("需要至少 3 位附近访客同意 AI 整理后才能生成小结。")
+        messages.append("需要至少 3 位附近访客发表符合条件的新回答后才能生成小结。")
     with connect(path) as db:
         db.execute("""INSERT INTO discussion_insights(topic_id,payload,updated_at) VALUES (?,?,?)
             ON CONFLICT(topic_id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at

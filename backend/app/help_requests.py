@@ -192,7 +192,7 @@ def help_router(path):
         # Small samples stay hidden, including in the opt-in directory.
         users = sorted(profiles, key=lambda profile: profile["nickname"].casefold())[:30] if len(profiles) >= 3 else []
         band = "hidden" if len(active) < 3 else count_band(len(active))
-        return {"requests": items, "active_band": band, "users": users}
+        return {"requests": items, "request_count": len(results), "active_band": band, "users": users}
 
     @router.post("/preferences")
     def preferences(body: Preferences, request: Request):

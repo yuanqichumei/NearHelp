@@ -72,18 +72,26 @@ try {
   await a.getByLabel('说说我的看法').fill(answer);
   await button(a, '发表看法').click();
   await exact(b, answer).waitFor();
+  assert(await b.locator('.talk-answer').first().evaluate(el =>
+    Boolean(el.compareDocumentPosition(document.getElementById('discussion-draft')) & Node.DOCUMENT_POSITION_FOLLOWING)));
+  await button(b, '赞 0').click();
+  await a.getByRole('button', { name: '赞 1', exact: true }).waitFor();
+  await button(b, '踩 0').click();
+  await a.getByRole('button', { name: '踩 1', exact: true }).waitFor();
+  await b.getByRole('button', { name: '踩 1', pressed: true }).click();
+  await a.getByRole('button', { name: '踩 0', exact: true }).waitFor();
   await button(b, '回复').click();
   await b.getByLabel('写下回复').fill('我们的队伍也碰到了类似的问题。');
   await button(b, '发送回复').click();
   await exact(a, '我们的队伍也碰到了类似的问题。').waitFor();
   await a.getByText('换个角度想 · AI 视角').click();
   await exact(a, '随本期问题预先生成').waitFor();
-  assert.match(await a.getByRole('link', { name: /知乎相关讨论/ }).getAttribute('href'), /^https:\/\/www\.zhihu\.com\//);
+  assert.equal(await a.getByRole('link', { name: /知乎相关讨论/ }).count(), 0);
   await checkLayout(a);
   for (const p of [a, b]) await nav(p, '附近').click();
   console.log('PASS: guest venue discovery, answers, cross-device replies and attributed perspectives.');
   for (const p of [a, b]) {
-    await button(p, '获取当前位置').click();
+    await p.getByRole('button', { name: /^(获取当前位置|重新定位)$/ }).click();
     await p.getByText(/定位成功 · 精度约/).waitFor();
   }
   const title = '借一个 Type-C 充电器半小时';
@@ -98,6 +106,7 @@ try {
   await a.waitForURL('**/requests/*');
   const detail = a.url();
   await exact(b, title).waitFor();
+  await exact(b, '1 条待解决').waitFor();
   await exact(b, '悬赏 HK$5').waitFor();
   await verifyModeration({ backend, python, db, phone, origin, viewer: b, title });
   await b.getByRole('link', { name: '评论 0' }).click();

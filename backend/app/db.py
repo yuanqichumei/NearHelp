@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS topics (
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS topics_community ON topics(community_slug, id DESC);
+CREATE INDEX IF NOT EXISTS topics_author ON topics(guest_id);
 CREATE TABLE IF NOT EXISTS comments (
     id INTEGER PRIMARY KEY,
     parent_id INTEGER REFERENCES comments(id),
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS comments (
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS comments_topic ON comments(topic_id, id);
+CREATE INDEX IF NOT EXISTS comments_author ON comments(guest_id);
 CREATE TABLE IF NOT EXISTS write_events (
     guest_id TEXT NOT NULL,
     client_ip TEXT NOT NULL,

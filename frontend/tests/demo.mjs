@@ -87,9 +87,17 @@ try {
   await a.getByText('换个角度想 · AI 视角').click();
   await exact(a, '随本期问题预先生成').waitFor();
   assert.equal(await a.getByRole('link', { name: /知乎相关讨论/ }).count(), 0);
+  await nav(a, '我的').click();
+  await button(a, '修改昵称').click();
+  await a.getByLabel('公开昵称').fill('会场校友');
+  await button(a, '保存昵称').click();
+  await a.getByRole('heading', { name: '会场校友', exact: true }).waitFor();
+  await b.locator('.talk-answer').filter({hasText: answer}).getByText(/会场校友/).waitFor();
+  await a.reload();
+  await a.getByRole('heading', { name: '会场校友', exact: true }).waitFor();
   await checkLayout(a);
   for (const p of [a, b]) await nav(p, '附近').click();
-  console.log('PASS: guest venue discovery, answers, cross-device replies and attributed perspectives.');
+  console.log('PASS: guest discovery, answers, replies, and a persistent public nickname across browser sessions.');
   for (const p of [a, b]) {
     await p.getByRole('button', { name: /^(获取当前位置|重新定位)$/ }).click();
     await p.getByText(/定位成功 · 精度约/).waitFor();
@@ -147,7 +155,7 @@ try {
   await exact(b, '好的，五分钟后到。').waitFor();
   await checkLayout(b);
   await a.goto(detail);
-  assert.equal(await a.getByRole('button', { name: /^邻友·/ }).innerText(), label);
+  await a.getByRole('button', { name: '会场校友', exact: true }).waitFor();
   await button(a, '标记已解决').click();
   await exact(a, '已解决').waitFor();
   await exact(a, content).waitFor();

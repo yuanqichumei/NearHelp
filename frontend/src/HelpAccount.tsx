@@ -74,8 +74,11 @@ function ProfilePage({ account, update }: { account: Account; update: (value: Ac
   const blocks = usePolling<Profile[]>('/api/help/blocks', 12000);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [nicknameDraft, setNicknameDraft] = useState<string>();
+  const [nicknameSaved, setNicknameSaved] = useState(false);
 
   async function save(path: string, body: object, apply: (result: Account) => void) {
+    if (busy) return;
     setBusy(true);
     setError('');
     try { apply(await post<Account>(path, body)); }
@@ -86,6 +89,24 @@ function ProfilePage({ account, update }: { account: Account; update: (value: Ac
   return <>
     <section className="card detail help-form">
       <h1>{account.nickname}</h1>
+      {nicknameDraft === undefined ? <button type="button" className="guest-button" disabled={busy} onClick={() => {
+        setNicknameSaved(false); setError(''); setNicknameDraft(account.nickname);
+      }}>修改昵称</button> : <form onSubmit={(event) => {
+        event.preventDefault();
+        const nickname = nicknameDraft.trim();
+        if (!nickname || nickname === account.nickname) return;
+        void save('/api/auth/profile', { nickname }, next => {
+          update(next); setNicknameDraft(undefined); setNicknameSaved(true);
+        });
+      }}>
+        <label className="field">公开昵称<input required maxLength={24} autoComplete="nickname" autoFocus value={nicknameDraft}
+          disabled={busy} onChange={event => setNicknameDraft(event.target.value)} /></label>
+        <div className="help-controls">
+          <button className="primary" disabled={busy || !nicknameDraft.trim() || nicknameDraft.trim() === account.nickname}>保存昵称</button>
+          <button type="button" className="guest-button" disabled={busy} onClick={() => { setNicknameDraft(undefined); setError(''); }}>取消</button>
+        </div>
+      </form>}
+      {nicknameSaved && <p className="quiet" role="status">昵称已更新。</p>}
       {account.is_admin && <Link className="back" href="/admin">管理公开需求</Link>}
       {account.is_demo && <p className="quiet">这是本浏览器的访客身份。刷新后可继续使用，清除网站数据会失去访问记录的凭证。 <Link href="/login">使用已有账号</Link></p>}
       <h2>附近隐私</h2>

@@ -27,6 +27,10 @@ class Registration(Credentials):
     nickname: str
 
 
+class ProfileUpdate(BaseModel):
+    nickname: str
+
+
 def password_digest(password, salt):
     return hashlib.scrypt(password.encode(), salt=salt, n=16384, r=8, p=1).hex()
 
@@ -169,6 +173,26 @@ def auth_router(path):
         with connect(path) as connection:
             account = current_help_user(connection, request)
             return public_account(account) if account is not None else None
+
+    @router.post("/profile")
+    def update_profile(body: ProfileUpdate, request: Request):
+        same_origin(request)
+        nickname = body.nickname.strip()
+        if not 1 <= len(nickname) <= 24 or re.search(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]", nickname):
+            raise HTTPException(422, "请输入 1–24 个字符的昵称，昵称不能包含换行。")
+        with connect(path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            account = require_help_user(connection, request)
+            if nickname == account["nickname"]:
+                return public_account(account)
+            actor = account["id"]
+            now = time.time()
+            rate_limit(connection, request, "nickname-ip", now, 60)
+            rate_limit(connection, request, "nickname-user", now, 8, actor)
+            connection.execute("UPDATE accounts SET nickname=? WHERE id=?", (nickname, actor))
+            connection.execute("UPDATE topics SET nickname=? WHERE guest_id=?", (nickname, actor))
+            connection.execute("UPDATE comments SET nickname=? WHERE guest_id=?", (nickname, actor))
+            return public_account({**dict(account), "nickname": nickname})
 
     @router.post("/logout", status_code=204)
     def logout(request: Request, response: Response):

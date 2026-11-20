@@ -119,6 +119,28 @@ def test_guest_switch_limits_and_registered_history(demo, monkeypatch, signup):
         assert normal.get("/api/help/mine").json()[0]["id"] == registered_request
 
 
+def test_nickname_rename_keeps_identity_and_public_history(demo, signup):
+    _, (owner, reader, other) = demo
+    original = start(owner).json()
+    other_user = signup(other, "other_reader", "别人的名字")
+    assert owner.post("/api/auth/profile", json={"nickname": " "}).status_code == 422
+    assert owner.post("/api/auth/profile", json={"nickname": "两行\n名字"}).status_code == 422
+    assert reader.post("/api/auth/profile", json={"nickname": "无法识别"}).status_code == 401
+    start(reader).raise_for_status()
+    published = owner.post("/api/help/requests", json=demand()).json()
+    rpath = f"/api/help/requests/{published['id']}"
+    thread = reader.post("/api/discussions/nearby", json={"lat": 22.338, "lon": 114.172}).json()[0]
+    discussion = f"/api/discussions/{thread['id']}"
+    assert owner.post(discussion + "/answers", json={"content": "改名以前的回答。"}).status_code == 201
+    assert other.post(discussion + "/answers", json={"content": "另一位的回答。"}).status_code == 201
+    renamed = owner.post("/api/auth/profile", json={"nickname": "  城大校友  ", "id": other_user["id"]}).json()
+    assert renamed == {**original, "nickname": "城大校友"}
+    assert owner.get("/api/auth/me").json() == renamed
+    assert reader.get(rpath).json()["nickname"] == "城大校友"
+    assert [row["nickname"] for row in reader.get(discussion).json()["answers"]] == ["别人的名字", "城大校友"]
+    assert other.post("/api/auth/profile", json={"nickname": "新的校友"}).json()["id"] == other_user["id"]
+
+
 def test_existing_database_upgrade_is_repeatable(tmp_path):
     path = tmp_path / "older.sqlite3"
     initialize(path)

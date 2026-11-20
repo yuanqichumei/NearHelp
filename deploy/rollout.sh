@@ -33,6 +33,31 @@ with closing(sqlite3.connect(Path(source).as_uri() + "?mode=ro", uri=True)) as l
             raise SystemExit("SQLite backup verification failed")
 PY
 
+# Check migrations on a private copy before changing the live service.
+(cd "$stage/backend" && PYTHONDONTWRITEBYTECODE=1 "$python" - "$backup/neartalk.sqlite3" <<'PY'
+from contextlib import closing
+from pathlib import Path
+import shutil
+import sqlite3
+import sys
+import tempfile
+from app.db import initialize
+
+snapshot = Path(sys.argv[1])
+with tempfile.TemporaryDirectory(dir=snapshot.parent) as directory:
+    rehearsal = Path(directory) / "rehearsal.sqlite3"
+    shutil.copyfile(snapshot, rehearsal)
+    initialize(rehearsal)
+    with closing(sqlite3.connect(rehearsal)) as upgraded, closing(sqlite3.connect(snapshot)) as previous:
+        if upgraded.execute("PRAGMA quick_check").fetchone() != ("ok",):
+            raise SystemExit("Migration integrity check failed")
+        for table in ("accounts", "topics", "comments", "help_requests", "help_messages"):
+            query = "SELECT COUNT(*) FROM " + table
+            if previous.execute(query).fetchone() != upgraded.execute(query).fetchone():
+                raise SystemExit("Migration changed the number of records in " + table)
+PY
+)
+
 # Keep previous hashed assets available to currently open browser tabs.
 cp -an "$app/frontend/dist/assets/." "$stage/frontend/dist/assets/"
 
@@ -67,6 +92,12 @@ curl -fsS http://127.0.0.1:8010/api/health
 curl -fsS http://127.0.0.1:8010/api/auth/me -o /dev/null
 curl -fsS 'http://127.0.0.1:8010/api/regions/topics?lat=22.34&lon=114.17&scope=5' -o /dev/null
 systemctl is-active neartalk
+domain=hacker.guihongyu.com
+curl -fsS --max-time 12 --noproxy '*' --resolve "$domain:443:127.0.0.1" "https://$domain/admin" > "$stage/admin-page.html"
+cmp -s "$stage/admin-page.html" "$app/frontend/dist/index.html"
+code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 12 --noproxy '*' --resolve "$domain:443:127.0.0.1" "https://$domain/api/admin/requests")
+test "$code" = 401
+rm -f "$stage/admin-page.html"
 trap - EXIT
 rm -f "$stage/backend/requirements.txt" "$stage/backend/tests/"test_*.py
 find "$stage/backend" -depth -type d -empty -delete

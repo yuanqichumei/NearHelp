@@ -122,6 +122,9 @@ def test_existing_database_upgrade_is_repeatable(tmp_path):
         db.execute("ALTER TABLE comments DROP COLUMN parent_id")
         db.execute("ALTER TABLE help_requests DROP COLUMN reward_cents")
         db.execute("ALTER TABLE accounts DROP COLUMN is_demo")
+        db.execute("ALTER TABLE accounts DROP COLUMN is_admin")
+        db.execute("ALTER TABLE help_requests DROP COLUMN hidden_at")
+        db.execute("ALTER TABLE help_requests DROP COLUMN pinned_until")
         db.execute("INSERT INTO accounts(id,username,nickname,password_hash) VALUES('old','old','原昵称','hash')")
         db.execute("INSERT INTO topics(community_slug,guest_id,nickname,title,content) VALUES('cityu-hackathon','old','原昵称','旧帖','旧内容')")
         db.execute("INSERT INTO help_requests(topic_id,author_id,expires_at) VALUES(1,'old',0)")
@@ -130,6 +133,8 @@ def test_existing_database_upgrade_is_repeatable(tmp_path):
     initialize(path)
     with connect(path) as db:
         assert db.execute("SELECT is_demo FROM accounts").fetchone()[0] == 0
+        assert db.execute("SELECT is_admin FROM accounts").fetchone()[0] == 0
+        assert tuple(db.execute("SELECT hidden_at, pinned_until FROM help_requests").fetchone()) == (None, None)
         assert db.execute("SELECT reward_cents FROM help_requests").fetchone()[0] == 0
         assert tuple(db.execute("SELECT content, parent_id FROM comments").fetchone()) == ("旧评论", None)
         assert not db.execute("PRAGMA foreign_key_check").fetchall()

@@ -17,7 +17,7 @@ Description = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 Reply = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 RequestId = Annotated[int, ApiPath(ge=1, le=2**63 - 1)]
 HELP_FIELDS = """h.topic_id AS id, h.author_id, h.lat, h.lon, h.expires_at, h.status, h.reward_cents,
-                 t.title, t.content, t.created_at, a.nickname"""
+                 h.hidden_at, h.pinned_until, t.title, t.content, t.created_at, a.nickname"""
 HELP_FROM = """FROM help_requests h JOIN topics t ON t.id = h.topic_id
                JOIN accounts a ON a.id = h.author_id"""
 UNSUPPORTED_TASKS = (
@@ -100,14 +100,18 @@ def effective_state(row, now):
     return row["status"]
 
 
+def pinned(row, now):
+    return (row["pinned_until"] or 0) > now and row["hidden_at"] is None and effective_state(row, now) == "open"
+
+
 def item_view(row, now):
     return {**{key: row[key] for key in ("id", "author_id", "nickname", "title", "created_at", "expires_at", "reward_cents")},
-            "status": effective_state(row, now)}
+            "status": effective_state(row, now), "is_pinned": pinned(row, now)}
 
 
 def get_help(connection, request_id):
     row = connection.execute(
-        f"SELECT {HELP_FIELDS} {HELP_FROM} WHERE h.topic_id=?", (request_id,),
+        f"SELECT {HELP_FIELDS} {HELP_FROM} WHERE h.topic_id=? AND h.hidden_at IS NULL", (request_id,),
     ).fetchone()
     if row is None:
         raise HTTPException(404, "找不到这个需求。")
@@ -155,7 +159,7 @@ def help_router(path):
                         OR (b.blocked_id=? AND b.blocker_id=c.guest_id))) AS comment_count,
                     EXISTS(SELECT 1 FROM help_offers o WHERE o.request_id=h.topic_id AND o.helper_id=?) AS has_offered
                     {HELP_FROM}
-                    WHERE h.status='open' AND h.expires_at>? AND h.lat BETWEEN ? AND ?""",
+                    WHERE h.hidden_at IS NULL AND h.status='open' AND h.expires_at>? AND h.lat BETWEEN ? AND ?""",
                 (actor, actor, actor, now, lat - extent, lat + extent),
             ).fetchall()
             presence = connection.execute(
@@ -169,7 +173,7 @@ def help_router(path):
                 meters = distance(lat, lon, item["lat"], item["lon"])
                 if meters <= body.radius and not blocked(connection, actor, item["author_id"]):
                     results.append((meters, item))
-            results.sort(key=lambda entry: (int(entry[0] // 100), -entry[1]["id"]))
+            results.sort(key=lambda entry: (not pinned(entry[1], now), int(entry[0] // 100), -entry[1]["id"]))
             items = [{**item_view(item, now), "summary": item["content"][:140],
                       "distance_m": min(body.radius, max(100, math.ceil(meters / 100) * 100)),
                       "comment_count": item["comment_count"], "has_offered": bool(item["has_offered"]),
@@ -249,8 +253,8 @@ def help_router(path):
             account = require_help_user(connection, request)
             rows = connection.execute(
                 f"""SELECT {HELP_FIELDS} {HELP_FROM}
-                    WHERE h.author_id=? OR EXISTS (SELECT 1 FROM help_offers o
-                        WHERE o.request_id=h.topic_id AND o.helper_id=?)
+                    WHERE h.hidden_at IS NULL AND (h.author_id=? OR EXISTS (SELECT 1 FROM help_offers o
+                        WHERE o.request_id=h.topic_id AND o.helper_id=?))
                     ORDER BY h.topic_id DESC LIMIT 100""",
                 (account["id"], account["id"]),
             )
@@ -347,7 +351,7 @@ def help_router(path):
             if not updated.rowcount:
                 raise HTTPException(409, "申请已处理或不存在。")
             if body.decision == "accepted":
-                connection.execute("UPDATE help_requests SET status='in_progress',lat=NULL,lon=NULL WHERE topic_id=?",
+                connection.execute("UPDATE help_requests SET status='in_progress',lat=NULL,lon=NULL,pinned_until=NULL WHERE topic_id=?",
                                    (request_id,))
                 connection.execute("UPDATE help_offers SET status='declined' WHERE request_id=? AND status='pending'",
                                    (request_id,))
@@ -366,7 +370,7 @@ def help_router(path):
             if effective_state(item, now) not in {"open", "in_progress"}:
                 raise HTTPException(409, "该需求已关闭。")
             throttle(connection, request, account["id"], "state", now, 15)
-            connection.execute("UPDATE help_requests SET status=?, lat=NULL, lon=NULL WHERE topic_id=?",
+            connection.execute("UPDATE help_requests SET status=?, lat=NULL, lon=NULL, pinned_until=NULL WHERE topic_id=?",
                                (body.status, request_id))
             connection.execute("UPDATE help_offers SET status='declined' WHERE request_id=? AND status='pending'",
                                (request_id,))

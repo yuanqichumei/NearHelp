@@ -6,7 +6,7 @@ export type Point = [number, number];
 export type Radius = 500 | 1000 | 3000;
 export type Status = 'open' | 'in_progress' | 'resolved' | 'expired' | 'cancelled';
 export type Profile = { id: string; nickname: string };
-export type Account = Profile & { username: string; is_demo: boolean; share_presence: boolean; discoverable: boolean };
+export type Account = Profile & { username: string; is_demo: boolean; is_admin: boolean; share_presence: boolean; discoverable: boolean };
 
 export interface RequestItem {
   id: number;
@@ -17,6 +17,7 @@ export interface RequestItem {
   expires_at: number;
   status: Status;
   reward_cents: number;
+  is_pinned: boolean;
 }
 
 export interface RequestPreview extends RequestItem {

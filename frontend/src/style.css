@@ -223,3 +223,64 @@ html { scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
   .help-shell .field :is(input, textarea, select), .help-shell .compact-field select { font-size: 16px; }
   .help-shell { padding-top: .75rem; }
 }
+
+.home-location {
+  background: #174d3f; color: #fff; border: 0; padding: .65rem 1rem .95rem;
+  border-radius: 17px; margin-bottom: 1.35rem;
+}
+.home-location .location-line > div { min-width: 0; }
+.region-toggle {
+  display: inline-flex; gap: .45rem; align-items: center; min-height: 44px; padding: 0;
+  text-align: left; color: #fff; border: 0; background: transparent; font-weight: 700; line-height: 1.4;
+}
+.region-toggle svg { color: #d8edde; flex-shrink: 0; }
+.region-radius { white-space: nowrap; font-weight: 550; color: #d8edde; }
+.region-chevron {
+  width: 7px; height: 7px; margin-inline: .1rem; flex-shrink: 0;
+  border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg);
+}
+.region-toggle[aria-expanded="true"] .region-chevron { transform: translateY(2px) rotate(225deg); }
+.home-location .location-hint { margin: 0; font-size: .83rem; color: #d4e6da; }
+.home-location .guest-button { border-color: #a8cbb7; background: transparent; color: #fff; font-size: .875rem; font-weight: 650; }
+.home-location .guest-button:hover { background: #285e50; }
+.home-location :focus-visible { outline-color: #d4efa5; }
+.home-location p.error { margin: .7rem 0 0; color: #ffe2d2; line-height: 1.5; }
+.home-location .help-controls { border-top: 1px solid #477463; padding-top: .65rem; }
+.help-controls[hidden] { display: none; }
+.home-location .compact-field { flex: 1; min-width: 0; color: #e6f1e8; }
+.home-location select { color: #163c30; width: 100%; }
+.nearby-heading { margin-bottom: .65rem; }
+.nearby-heading h1 { font-size: clamp(1.55rem, 4.5vw, 1.85rem); color: #173d30; }
+.nearby-heading .map-link { font-size: .875rem; font-weight: 650; }
+.nearby-list { gap: .85rem; }
+.nearby-request { padding: 1.05rem 1.1rem .7rem; box-shadow: 0 2px 7px #183d2e09; }
+.request-title { display: flex; gap: .6rem; align-items: flex-start; }
+.request-title h2 { flex: 1; min-width: 0; font-size: 1.25rem; color: #183d30; overflow-wrap: anywhere; line-height: 1.4; }
+.pinned-label { margin-top: .2rem; padding: .12rem .45rem; border: 1px solid #a7c9b3; color: #245b42; border-radius: 6px; font-size: .75rem; font-weight: 650; }
+.request-location, .request-location > span, .request-context, .request-status { display: flex; align-items: center; }
+.request-location { flex-wrap: wrap; gap: .45rem; color: var(--muted); font-size: .85rem; margin-top: .35rem; }
+.request-location > span { gap: .2rem; font-weight: 650; color: var(--green); }
+.request-location time::before { content: '·'; margin-right: .45rem; }
+.nearby-request .summary { margin: .75rem 0; -webkit-line-clamp: 2; }
+.request-context { flex-wrap: wrap; gap: .45rem .65rem; color: var(--muted); font-size: .8rem; }
+.request-status { gap: .3rem; }
+.request-status::before { content: ''; width: .38rem; height: .38rem; background: #59916f; border-radius: 50%; }
+.request-author { margin-inline-start: auto; overflow-wrap: anywhere; }
+.nearby-request .card-foot { margin-top: .8rem; padding-top: .55rem; }
+.nearby-request .card-foot a { font-size: .9rem; }
+.nearby-request .offer-button, .nearby-request .request-action {
+  padding-inline: 1rem; border-radius: 10px; background: var(--green); color: #fff; font-weight: 650;
+}
+.nearby-request :is(.offer-button:not(:disabled), .request-action):hover { background: var(--green-dark); }
+.nearby-empty { padding: 2rem 1rem; gap: .85rem; }
+.nearby-empty-symbol {
+  width: 68px; height: 68px; border-radius: 50%; display: grid; place-items: center; color: var(--green);
+  background: radial-gradient(circle, #dcf0de 0 44%, transparent 45% 62%, #d1e7d5 63% 65%, transparent 66%);
+}
+.nearby-empty h2 { font-size: 1.14rem; color: #324e41; }
+@media (max-width: 24rem) {
+  .home-location { padding-inline: .75rem; }
+  .region-toggle { gap: .3rem; font-size: .9rem; }
+  .home-location .guest-button { padding-inline: .45rem; }
+  .nearby-request { padding-inline: .9rem; }
+}

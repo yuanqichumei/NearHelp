@@ -13,6 +13,7 @@ import { Icon } from './ui';
 import './style.css';
 
 const HelpMap = lazy(() => import('./MapPage'));
+const AdminRequests = lazy(() => import('./AdminRequests'));
 
 function App() {
   const [account, setAccount] = useState<Account | null>();
@@ -66,6 +67,12 @@ function Workspace({ account, update, path, region }: {
   else if (path === '/archive' || archiveTopic || archivePlace) page = <Archive key={path}
     slug={archivePlace?.[1]} id={archiveTopic ?? archivePlace?.[2]} />;
   else if (account === undefined) page = <p className="notice" role="status">正在准备你的身份…</p>;
+  else if (path === '/admin' || path === '/admin/') {
+    if (!account || account.is_demo) page = <AccountPage account={null} update={update} returnTo="/admin" adminLogin />;
+    else if (account.is_admin) page = <Suspense fallback={<p role="status">正在载入需求管理…</p>}><AdminRequests /></Suspense>;
+    else page = <section className="notice"><h1>当前账号没有管理权限</h1>
+      <Link className="back" href="/account">返回我的账号</Link></section>;
+  }
   else if (path === '/account') page = <AccountPage account={account} update={update} returnTo={continueTo} />;
   else if (path === '/login') page = <AccountPage account={null} update={update} returnTo="/" />;
   else if (path === '/publish') page = account ? <PublishPage region={region} />
@@ -100,7 +107,7 @@ function Workspace({ account, update, path, region }: {
         <Link href="/messages" aria-current={path.startsWith('/messages') ? 'page' : undefined}>
           <Icon name="chat" />消息{unread > 0 && <span className="help-unread" aria-label={unread + ' 条待处理消息'}>{unread}</span>}
         </Link>
-        <Link href="/account" aria-current={path === '/account' ? 'page' : undefined}><Icon name="person" />我的</Link>
+        <Link href="/account" aria-current={path === '/account' || path.startsWith('/admin') ? 'page' : undefined}><Icon name="person" />我的</Link>
       </div>
     </nav>
   </>;

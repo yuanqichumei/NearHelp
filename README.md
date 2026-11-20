@@ -55,6 +55,19 @@ npm.cmd run dev -- --host 0.0.0.0 --port 5286
 .\.venv\Scripts\python.exe -m app.clean_demo --db data/demo-preview.sqlite3 --request 1
 ```
 
+### 管理公开需求
+
+管理员从 `/admin` 登录，也可以在「我的」进入「管理公开需求」。列表可按公开或下架状态筛选，查看正文和举报次数。点击「下架」后，需求从附近列表、地图和公开详情移除。在「已下架」中可以恢复。已建立的私信仍由原会话参与者访问。
+
+待解决的公开需求可在原有浏览半径内置顶，最多 12 小时，到需求过期时提前结束。进入处理、解决、取消或下架后也会结束置顶。「取消置顶」立即恢复普通排序。
+
+首次建号在服务器的后端目录由维护者执行下列命令。命令提示输入并确认密码，只接受未被注册过的新账号名。数据库沿用正在运行的实例。
+
+```sh
+cd /opt/neartalk/backend
+sudo -u neartalk .venv/bin/python -m app.create_admin --db /var/lib/neartalk/neartalk.sqlite3 --username YOUR_NEW_USERNAME
+```
+
 ### 重跑自动验收
 
 后端在 `backend/` 运行 `.\.venv\Scripts\python.exe -m pytest -q`。前端在 `frontend/` 依次运行 `npm.cmd ci`、`npm.cmd run build` 和 `npm.cmd run test:demo`。浏览器测试需要本机 Chrome、后端虚拟环境及已构建的前端。测试会自动启动临时服务，创建并清理独立数据库，使用测试设备位置。验证 WebKit 可先运行 `npx.cmd playwright-core install webkit`，再运行 `npm.cmd run test:demo -- --webkit`。如果当前终端已配置上文开发证书，测试同样会走 HTTPS。

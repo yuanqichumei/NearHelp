@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     username TEXT NOT NULL UNIQUE,
     nickname TEXT NOT NULL,
     password_hash TEXT NOT NULL,
+    is_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0,1)),
     is_demo INTEGER NOT NULL DEFAULT 0,
     share_presence INTEGER NOT NULL DEFAULT 0,
     discoverable INTEGER NOT NULL DEFAULT 0
@@ -129,6 +130,8 @@ CREATE TABLE IF NOT EXISTS help_requests (
     lat REAL,
     lon REAL,
     expires_at REAL NOT NULL,
+    hidden_at REAL,
+    pinned_until REAL,
     status TEXT NOT NULL DEFAULT 'open'
         CHECK (status IN ('open', 'in_progress', 'resolved', 'cancelled')),
     reward_cents INTEGER NOT NULL DEFAULT 0 CHECK (reward_cents BETWEEN 0 AND 1000000)
@@ -170,6 +173,7 @@ CREATE TABLE IF NOT EXISTS help_reports (
     reported_at REAL NOT NULL,
     UNIQUE (reporter_id, target_id, request_id)
 );
+CREATE INDEX IF NOT EXISTS help_reports_request ON help_reports(request_id);
 """
 
 
@@ -194,7 +198,10 @@ def initialize(path: Path):
         # Existing databases retain their topics, accounts, messages and row IDs.
         for table, column, definition in (
             ("accounts", "is_demo", "INTEGER NOT NULL DEFAULT 0"),
+            ("accounts", "is_admin", "INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0,1))"),
             ("help_requests", "reward_cents", "INTEGER NOT NULL DEFAULT 0 CHECK (reward_cents BETWEEN 0 AND 1000000)"),
+            ("help_requests", "hidden_at", "REAL"),
+            ("help_requests", "pinned_until", "REAL"),
             ("comments", "parent_id", "INTEGER REFERENCES comments(id)"),
         ):
             if column not in {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}:

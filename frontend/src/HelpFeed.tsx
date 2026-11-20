@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { defaultAreas, requestLink, requestPath } from './helpApi';
 import type { Account, Discovery, HelpArea, Profile, Radius, Status } from './helpApi';
 import { post } from './api';
@@ -30,11 +30,23 @@ export function remainingTime(expires: number) {
   return '剩余 ' + Math.floor(minutes / 60) + ' 小时 ' + (minutes % 60) + ' 分钟';
 }
 
-export function AreaControls({ region }: { region: HelpArea }) {
+const radiusLabel = (radius: Radius) => radius < 1000 ? radius + ' 米' : radius / 1000 + ' 公里';
+
+export function AreaControls({ region, compact = false }: { region: HelpArea; compact?: boolean }) {
   const names = defaultAreas.map((area) => area.name);
+  const [expanded, setExpanded] = useState(Boolean(region.error));
+  const controlsId = useId();
+  useEffect(() => {
+    if (region.error) setExpanded(true);
+  }, [region.error]);
+  const areaName = (region.position ? '' : '浏览 · ') + region.area.name;
   return <>
     <div className="location-line">
-      <div><span className="location-name"><Icon name="pin" size={18} />{region.position ? '' : '浏览 · '}{region.area.name}</span>
+      <div>{compact ? <button type="button" className="region-toggle" aria-expanded={expanded}
+        aria-controls={controlsId} onClick={() => setExpanded(!expanded)}>
+        <Icon name="pin" size={18} /><span>{areaName}<span className="region-radius"> · {radiusLabel(region.radius)}</span></span>
+        <span className="region-chevron" aria-hidden="true" />
+      </button> : <span className="location-name"><Icon name="pin" size={18} />{areaName}</span>}
         <p className="location-hint" role="status">{region.locating ? '正在获取设备位置…' : region.position
           ? '定位成功 · 精度约 ' + Math.ceil(region.position.coords.accuracy) + ' 米'
           : region.error ? '可手动选区继续浏览' : '开启定位，发现附近的需求。'}</p></div>
@@ -43,7 +55,7 @@ export function AreaControls({ region }: { region: HelpArea }) {
       </button>
     </div>
     {region.error && <p className="error" role="alert">{region.error}</p>}
-    <div className="help-controls">
+    <div className="help-controls" id={controlsId} hidden={compact && !expanded}>
       <label className="compact-field">浏览区域
         <select value={region.area.name} onChange={(event) => {
           const next = defaultAreas.find((area) => area.name === event.target.value);
@@ -63,7 +75,7 @@ export function AreaControls({ region }: { region: HelpArea }) {
 }
 
 export function AreaSummary({ region, data }: { region: HelpArea; data?: Discovery }) {
-  const distance = region.radius < 1000 ? region.radius + ' 米' : region.radius / 1000 + ' 公里';
+  const distance = radiusLabel(region.radius);
   const active = data?.active_band === 'hidden' ? '最近活跃人数较少'
     : data ? data.active_band + ' 人最近活跃' : '正在获取活跃人数';
   return <p className="help-summary" role="status">附近 {distance} · {active}</p>;
@@ -83,10 +95,10 @@ export function HelpFeed({ region, data, error, account, signIn }: {
     finally { setSending(undefined); }
   }
   return <>
-    <section className="location-panel" aria-label="定位与浏览范围">
-      <AreaControls region={region} />
+    <section className="location-panel home-location" aria-label="定位与浏览范围">
+      <AreaControls region={region} compact />
     </section>
-    <div className="section-head feed-head">
+    <div className="section-head feed-head nearby-heading">
       <h1>附近需求</h1>
       <Link className="map-link" href="/map"><Icon name="pin" size={16} />查看地图</Link>
     </div>
@@ -94,29 +106,30 @@ export function HelpFeed({ region, data, error, account, signIn }: {
     {offerError && <p className="error" role="alert">{offerError}</p>}
     {!data && !error && <p className="notice" role="status">正在加载附近信息…</p>}
     {data && (
-      data.requests.length ? <ul className="topic-list">
-        {data.requests.map((item) => <li key={item.id} className="card topic-card">
+      data.requests.length ? <ul className="topic-list nearby-list">
+        {data.requests.map((item) => <li key={item.id} className="card topic-card nearby-request">
           <Link className="card-main" href={requestLink(item.id)}>
-            <div className="help-tag-row">
-              <Reward cents={item.reward_cents} />
-              <span className="hot-meta">{statusNames[item.status]}</span>
+            <div className="request-title"><h2>{item.title}</h2>
+              {item.is_pinned && <span className="pinned-label">置顶</span>}
             </div>
-            <h3>{item.title}</h3><p className="summary">{item.summary}</p>
-            <p className="help-item-meta">
-              约 {item.distance_m} 米 · {publishedSince(item.created_at)} · {item.nickname}
-            </p>
+            <div className="request-location"><span><Icon name="pin" size={14} />约 {item.distance_m} 米</span>
+              <time dateTime={item.created_at}>{publishedSince(item.created_at)}</time></div>
+            <p className="summary">{item.summary}</p>
+            <div className="request-context"><Reward cents={item.reward_cents} />
+              <span className="request-status">{statusNames[item.status]}</span>
+              <span className="request-author">{item.nickname}</span></div>
           </Link>
           <div className="card-foot">
             <Link href={requestLink(item.id) + '#comments'}><Icon name="chat" size={16} />评论 {item.comment_count}</Link>
-            {account?.id === item.author_id ? <Link href={requestLink(item.id)}>管理需求</Link>
-              : item.has_offered ? <Link href={requestLink(item.id)}>查看申请</Link>
+            {account?.id === item.author_id ? <Link className="request-action" href={requestLink(item.id)}>管理需求</Link>
+              : item.has_offered ? <Link className="request-action" href={requestLink(item.id)}>查看申请</Link>
               : <button className="offer-button" disabled={sending !== undefined} onClick={() => void offer(item.id)}>
                 {sending === item.id ? '发送中…' : '我能帮忙'}</button>}
           </div>
         </li>)}
-      </ul> : <div className="empty">
-        <span className="empty-icon"><Icon name="chat" size={26} /></span>
-        <h3>附近暂时没有待解决的需求。</h3>
+      </ul> : <div className="empty nearby-empty">
+        <span className="nearby-empty-symbol"><Icon name="pin" size={29} /></span>
+        <h2>附近暂时没有待解决的需求。</h2>
         <div className="empty-actions"><Link className="primary help-action" href="/publish">发布需求</Link>
           {region.radius < 3000 && <button className="guest-button" onClick={() =>
             region.setRadius(region.radius === 500 ? 1000 : 3000)}>扩大搜索范围</button>}</div>

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { chromium, webkit } from 'playwright-core';
 import { preview } from 'vite';
+import { verifyModeration } from './moderation.mjs';
 
 const directory = await mkdtemp(join(tmpdir(), 'nearhelp-ui-'));
 const db = join(directory, 'demo.sqlite3');
@@ -79,6 +80,7 @@ try {
   const detail = a.url();
   await exact(b, title).waitFor();
   await exact(b, '悬赏 HK$5').waitFor();
+  await verifyModeration({ backend, python, db, phone, origin, viewer: b, title });
   await b.getByRole('link', { name: '评论 0' }).click();
   const content = '我这里有充电器，可以借给你。';
   await b.getByLabel(/公开评论/).fill(content);

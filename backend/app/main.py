@@ -17,6 +17,7 @@ from .hot_topics import list_hot_topics
 from .help_messages import messages_router
 from .help_requests import HELP_COMMUNITY, cleanup_help, help_router
 from .location import Latitude, Longitude, Point, cleanup, location_router
+from .moderation import moderation_router
 from .places import places_router
 from .regions import Scope, coarse_point, regional_stats, regional_topics
 
@@ -123,6 +124,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     app.include_router(auth_router(path))
     app.include_router(help_router(path))
     app.include_router(messages_router(path))
+    app.include_router(moderation_router(path))
 
     @app.middleware("http")
     async def no_api_cache(request: Request, call_next):

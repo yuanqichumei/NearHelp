@@ -31,6 +31,11 @@ def password_digest(password, salt):
     return hashlib.scrypt(password.encode(), salt=salt, n=16384, r=8, p=1).hex()
 
 
+def new_password_hash(password):
+    salt = secrets.token_bytes(16)
+    return salt.hex() + ":" + password_digest(password, salt)
+
+
 def token_digest(token):
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -41,7 +46,7 @@ def current_account(connection, request, *, allow_demo=False):
         token = request.cookies.get(name, "")
         if re.fullmatch(r"[a-zA-Z0-9_-]{43}", token):
             actor = connection.execute(
-                """SELECT a.id, a.username, a.nickname, a.share_presence, a.discoverable, a.is_demo
+                """SELECT a.id, a.username, a.nickname, a.share_presence, a.discoverable, a.is_demo, a.is_admin
                    FROM accounts a JOIN account_sessions s ON s.account_id = a.id
                    WHERE s.id=? AND s.expires_at>? AND a.is_demo=?""",
                 (token_digest(token), time.time(), name == DEMO_COOKIE),
@@ -75,6 +80,7 @@ def same_origin(request):
 
 def public_account(account):
     return {"id": account["id"], "username": account["username"], "nickname": account["nickname"], "is_demo": bool(account["is_demo"]),
+            "is_admin": bool(account["is_admin"] and not account["is_demo"]),
             "share_presence": bool(account["share_presence"]), "discoverable": bool(account["discoverable"])}
 
 
@@ -127,20 +133,19 @@ def auth_router(path):
             raise HTTPException(422, "账号需为 3–24 个字母、数字或下划线，昵称需为 1–24 个字符。")
         if not 10 <= len(password) <= 128:
             raise HTTPException(422, "密码需为 10–128 个字符。")
-        salt = secrets.token_bytes(16)
         user_id = str(uuid4())
         try:
-            digest = password_digest(password, salt)
+            digest = new_password_hash(password)
             with connect(path) as connection:
                 connection.execute(
                     "INSERT INTO accounts (id, username, nickname, password_hash) VALUES (?, ?, ?, ?)",
-                    (user_id, username, nickname, salt.hex() + ":" + digest),
+                    (user_id, username, nickname, digest),
                 )
                 open_session(connection, request, response, user_id)
         except sqlite3.IntegrityError:
             raise HTTPException(409, "这个账号名已被使用。") from None
         return public_account({"id": user_id, "username": username, "nickname": nickname,
-                               "is_demo": False, "share_presence": False, "discoverable": False})
+                               "is_demo": False, "is_admin": False, "share_presence": False, "discoverable": False})
 
     @router.post("/login")
     def login(body: Credentials, request: Request, response: Response):

@@ -33,7 +33,7 @@ def messages_router(path):
             pending = connection.execute(
                 """SELECT o.request_id,t.title,COUNT(*) AS offers FROM help_offers o
                    JOIN help_requests h ON h.topic_id=o.request_id JOIN topics t ON t.id=h.topic_id
-                   WHERE h.author_id=? AND h.status='open' AND h.expires_at>? AND o.status='pending'
+                   WHERE h.author_id=? AND h.hidden_at IS NULL AND h.status='open' AND h.expires_at>? AND o.status='pending'
                      AND NOT EXISTS (SELECT 1 FROM account_blocks b
                         WHERE (b.blocker_id=h.author_id AND b.blocked_id=o.helper_id)
                            OR (b.blocker_id=o.helper_id AND b.blocked_id=h.author_id))

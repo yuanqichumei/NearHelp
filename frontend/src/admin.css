@@ -1,0 +1,11 @@
+.admin-heading { margin-bottom: 1rem; }
+.admin-heading h1 { font-size: 1.6rem; }
+.admin-item { padding: 1rem; overflow-wrap: anywhere; }
+.admin-item h2 { margin-bottom: .25rem; }
+.admin-item details { margin: .35rem 0; }
+.admin-item summary { cursor: pointer; color: var(--green); padding: .55rem 0; }
+.admin-flags, .admin-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.admin-flags:not(:empty) { margin-top: .6rem; }
+.admin-actions .guest-button { max-width: none; }
+.admin-actions .admin-hide { color: #913b30; }
+.admin-requests [role="status"] { overflow-wrap: anywhere; }

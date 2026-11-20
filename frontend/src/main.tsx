@@ -103,7 +103,7 @@ function Workspace({ account, update, path, region }: {
     <main className="shell help-shell">
       {region.sharingError && <p className="notice" role="status">{region.sharingError}</p>}
       {(path === '/' || path === '/discussions') && <div className="discovery-tabs" aria-label="附近内容">
-        <Link href="/" aria-current={path === '/' ? 'page' : undefined}>Around You</Link>
+        <Link href="/" aria-current={path === '/' ? 'page' : undefined}>Around Need</Link>
         <Link href="/discussions" aria-current={path === '/discussions' ? 'page' : undefined}>Around Talk</Link>
       </div>}
       {page}

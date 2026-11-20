@@ -183,7 +183,6 @@ CREATE TABLE IF NOT EXISTS discussion_rounds (
     zhihu_url TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1
 );
-CREATE UNIQUE INDEX IF NOT EXISTS one_feature_per_venue ON discussion_rounds(venue) WHERE active=1;
 CREATE TABLE IF NOT EXISTS discussion_local (
     comment_id INTEGER PRIMARY KEY REFERENCES comments(id) ON DELETE CASCADE
 );
@@ -238,10 +237,15 @@ def initialize(path: Path):
             ("help_requests", "hidden_at", "REAL"),
             ("help_requests", "pinned_until", "REAL"),
             ("comments", "parent_id", "INTEGER REFERENCES comments(id)"),
+            ("discussion_rounds", "featured", "INTEGER NOT NULL DEFAULT 1"),
+            ("discussion_rounds", "hidden_at", "REAL"),
+            ("discussion_rounds", "pinned_until", "REAL"),
         ):
             if column not in {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}:
                 connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
         connection.execute("INSERT OR IGNORE INTO communities (slug) VALUES (?)", (DEFAULT_COMMUNITY,))
+        connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_primary_question_per_venue ON discussion_rounds(venue) WHERE active=1 AND featured=1")
+        connection.execute("DROP INDEX IF EXISTS one_feature_per_venue")
         seed(connection)
 
 

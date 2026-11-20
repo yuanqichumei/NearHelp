@@ -100,6 +100,45 @@ def moderation_router(path):
             return {"items": [dict(row) for row in rows[:PAGE_SIZE]],
                     "next_before": rows[PAGE_SIZE-1]["id"] if len(rows)>PAGE_SIZE else None}
 
+    @router.get("/discussion-topics")
+    def discussion_topics(request: Request, visibility: Literal["all", "visible", "hidden"] = "all",
+                          before: Annotated[int, Query(gt=0, le=2**63 - 1)] | None = None):
+        filters = {"all": "1", "visible": "d.hidden_at IS NULL", "hidden": "d.hidden_at IS NOT NULL"}
+        now = time.time()
+        with connect(path) as db:
+            require_admin(db, request)
+            rows = db.execute(f"""SELECT d.topic_id AS id,t.title,t.content,t.created_at,d.venue AS nickname,
+                    CASE WHEN d.active=1 THEN 'open' ELSE 'expired' END AS status,
+                    d.hidden_at IS NOT NULL AS is_hidden,coalesce(d.pinned_until,0)>? AS is_pinned,
+                    d.pinned_until,0 AS report_count
+                FROM discussion_rounds d JOIN topics t ON t.id=d.topic_id
+                WHERE {filters[visibility]} AND (? IS NULL OR d.topic_id<?)
+                ORDER BY d.topic_id DESC LIMIT ?""", (now, before, before, PAGE_SIZE+1)).fetchall()
+            return {"items": [dict(row) for row in rows[:PAGE_SIZE]],
+                    "next_before": rows[PAGE_SIZE-1]["id"] if len(rows)>PAGE_SIZE else None}
+
+    @router.post("/discussion-topics/{topic_id}", status_code=204)
+    def moderate_discussion(topic_id: RequestId, body: ModerationAction, request: Request):
+        same_origin(request)
+        now = time.time()
+        with connect(path) as db:
+            db.execute("BEGIN IMMEDIATE")
+            admin = require_admin(db, request)
+            throttle(db, request, admin["id"], "moderate", now, 30)
+            row = db.execute("SELECT active,hidden_at FROM discussion_rounds WHERE topic_id=?", (topic_id,)).fetchone()
+            if row is None:
+                raise HTTPException(404, "找不到这道讨论话题。")
+            if body.action == "pin":
+                if not row["active"] or row["hidden_at"] is not None:
+                    raise HTTPException(409, "只能置顶正在公开讨论的话题。")
+                db.execute("UPDATE discussion_rounds SET pinned_until=? WHERE topic_id=?", (now + PIN_SECONDS, topic_id))
+            elif body.action == "hide":
+                db.execute("UPDATE discussion_rounds SET hidden_at=coalesce(hidden_at,?), pinned_until=NULL WHERE topic_id=?", (now, topic_id))
+            elif body.action == "restore":
+                db.execute("UPDATE discussion_rounds SET hidden_at=NULL WHERE topic_id=?", (topic_id,))
+            else:
+                db.execute("UPDATE discussion_rounds SET pinned_until=NULL WHERE topic_id=?", (topic_id,))
+
     @router.post("/discussion-answers/{comment_id}", status_code=204)
     def moderate_answer(comment_id: RequestId, body: AnswerAction, request: Request):
         same_origin(request)

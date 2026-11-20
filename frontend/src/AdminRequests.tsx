@@ -23,31 +23,42 @@ interface AdminItem {
 }
 
 export default function AdminRequests() {
-  const [filter, setFilter] = useState<Visibility>('all');
-  const [pages, setPages] = useState<number[]>([]);
-  const before = pages.at(-1);
-  const path = '/api/admin/requests?visibility=' + filter + (before ? '&before=' + before : '');
+  const [topicsOpen, setTopicsOpen] = useState(false);
   return <section className="admin-requests">
     <Link className="back" href="/account">返回我的账号</Link>
     <AdminDiscussionAnswers />
+    <details className="card detail" onToggle={event => setTopicsOpen(event.currentTarget.open)}>
+      <summary>管理讨论话题</summary>
+      {topicsOpen && <AdminPostList endpoint="/api/admin/discussion-topics" label="话题" />}
+    </details>
+    <AdminPostList endpoint="/api/admin/requests" label="需求" />
+  </section>;
+}
+
+function AdminPostList({ endpoint, label }: { endpoint: string; label: string }) {
+  const [filter, setFilter] = useState<Visibility>('all');
+  const [pages, setPages] = useState<number[]>([]);
+  const before = pages.at(-1);
+  const path = endpoint + '?visibility=' + filter + (before ? '&before=' + before : '');
+  return <div>
     <div className="section-head admin-heading">
-      <h1>管理公开需求</h1>
-      <label className="compact-field"><span className="sr-only">显示范围</span>
+      {label === '需求' && <h1>管理公开需求</h1>}
+      <label className="compact-field"><span className="sr-only">{label === '需求' ? '显示范围' : '话题范围'}</span>
         <select value={filter} onChange={event => {
           setFilter(event.target.value as Visibility);
           setPages([]);
         }}>
-          <option value="all">全部需求</option><option value="visible">公开中</option><option value="hidden">已下架</option>
+          <option value="all">全部{label}</option><option value="visible">公开中</option><option value="hidden">已下架</option>
         </select>
       </label>
     </div>
-    <ModerationList key={path} path={path} previous={before ? () => setPages(pages.slice(0, -1)) : undefined}
+    <ModerationList key={path} path={path} endpoint={endpoint} label={label} previous={before ? () => setPages(pages.slice(0, -1)) : undefined}
       next={cursor => setPages([...pages, cursor])} />
-  </section>;
+  </div>;
 }
 
-function ModerationList({ path, previous, next }: {
-  path: string; previous?: () => void; next: (cursor: number) => void;
+function ModerationList({ path, endpoint, label, previous, next }: {
+  path: string; endpoint: string; label: string; previous?: () => void; next: (cursor: number) => void;
 }) {
   const { data, error, refresh } = usePolling<{ items: AdminItem[]; next_before: number | null }>(path, 15000);
   const [busy, setBusy] = useState(false);
@@ -59,7 +70,7 @@ function ModerationList({ path, previous, next }: {
     setResult('');
     setProblem('');
     try {
-      await post('/api/admin/requests/' + item.id, { action });
+      await post(endpoint + '/' + item.id, { action });
       const messages = { hide: '已下架', restore: '已恢复公开', pin: '已在附近列表置顶', unpin: '已取消置顶' };
       setResult('「' + item.title + '」' + messages[action] + '。');
     } catch (err) { setProblem(err instanceof Error ? err.message : '操作失败，请重试。'); }
@@ -70,17 +81,19 @@ function ModerationList({ path, previous, next }: {
     {error && <p className="notice" role="alert">{error.message} <button className="text-button" onClick={refresh}>重试</button></p>}
     {problem && <p className="error" role="alert">{problem}</p>}
     {result && <p className="notice" role="status">{result}</p>}
-    {!data && !error && <p className="notice" role="status">正在读取需求…</p>}
+    {!data && !error && <p className="notice" role="status">正在读取{label}…</p>}
     {data && (data.items.length ? <ul className="topic-list">
       {data.items.map(item => <li className="card admin-item" key={item.id}>
         <h2>{item.title}</h2>
-        <p className="hot-meta">{item.nickname} · {dateFormat.format(new Date(item.created_at))} · {statusNames[item.status]}</p>
+        <p className="hot-meta">{item.nickname} · {dateFormat.format(new Date(item.created_at))} · {label === '话题'
+          ? item.status === 'open' ? '讨论中' : '已结束' : statusNames[item.status]}</p>
         <div className="admin-flags">
           {item.is_hidden && <span className="help-tag">已下架</span>}
           {item.is_pinned && item.pinned_until && <span className="help-tag">置顶至 {dateFormat.format(new Date(item.pinned_until * 1000))}</span>}
           {item.report_count > 0 && <span className="help-tag reward">{item.report_count} 次举报</span>}
         </div>
-        <details><summary>查看正文</summary><p className="post-content">{item.content}</p></details>
+        {item.content && <details><summary>查看正文</summary><p className="post-content">{item.content}</p></details>}
+        {label === '话题' && !item.is_hidden && <Link href={'/discussions/' + item.id}>打开话题</Link>}
         <div className="admin-actions">
           {item.is_hidden ? <button className="guest-button" disabled={busy} onClick={() => void act(item, 'restore')}>恢复公开</button> : <>
             {(item.is_pinned || item.status === 'open') && <button className="guest-button" disabled={busy}
@@ -89,8 +102,8 @@ function ModerationList({ path, previous, next }: {
           </>}
         </div>
       </li>)}
-    </ul> : <p className="empty">当前范围内没有需求。</p>)}
-    {(previous || data?.next_before) && <nav className="admin-actions" aria-label="需求翻页">
+    </ul> : <p className="empty">当前范围内没有{label}。</p>)}
+    {(previous || data?.next_before) && <nav className="admin-actions" aria-label={label + '翻页'}>
       {previous && <button className="guest-button" disabled={busy} onClick={previous}>上一页</button>}
       {data?.next_before != null && <button className="guest-button" disabled={busy} onClick={() => next(data.next_before!)}>下一页</button>}
     </nav>}

@@ -19,7 +19,7 @@ def eligible_ids(rows):
 def cached_insights(db, topic_id, sources):
     row = db.execute("SELECT payload FROM discussion_insights WHERE topic_id=?", (topic_id,)).fetchone()
     if row is None:
-        return {"zhihu": [], "local": [], "comparison": []}
+        return {"zhihu": [], "local": [], "comparison": [], "include_zhihu": False}
     payload = json.loads(row["payload"])
     # Keep a generated result only while all input answers are still visible to this reader.
     # An uncited answer can also have influenced the result.
@@ -28,28 +28,32 @@ def cached_insights(db, topic_id, sources):
     return {
         "zhihu": references, "local": payload["local"] if valid else [],
         "comparison": payload["comparison"] if valid and references and rag_enabled() else [],
+        "include_zhihu": payload.get("include_zhihu", bool(references)),
     }
 
 
-def refresh_insights(path, topic_id, title, query, sources):
+def refresh_insights(path, topic_id, title, query, sources, include_zhihu):
     started = time.time()
     ids = eligible_ids(sources)
     local = [{"id": f"L{row['id']}", "text": row["content"]} for row in sources if row["id"] in ids][:24]
     with connect(path) as db:
         cached = db.execute("SELECT payload FROM discussion_insights WHERE topic_id=?", (topic_id,)).fetchone()
     previous = json.loads(cached["payload"]) if cached else None
-    payload = {"query": query, "inputs": [int(item["id"][1:]) for item in local],
+    payload = {"query": query, "include_zhihu": include_zhihu, "inputs": [int(item["id"][1:]) for item in local],
                "zhihu": [], "local": [], "comparison": []}
     messages = []
-    try:
-        refs = search_answers(query)
-        payload["zhihu"] = refs
-        messages.append(f"找到 {len(refs)} 条知乎回答。")
-    except ZhihuError as error:
-        refs = []
-        if previous and previous["query"] == query:
-            payload["zhihu"] = previous["zhihu"]
-        messages.append(str(error))
+    refs = []
+    if include_zhihu:
+        try:
+            refs = search_answers(query)
+            payload["zhihu"] = refs
+            messages.append(f"找到 {len(refs)} 条知乎回答。")
+        except ZhihuError as error:
+            if previous and previous["query"] == query:
+                payload["zhihu"] = previous["zhihu"]
+            messages.append(str(error))
+    else:
+        messages.append("本话题的知乎回答已关闭。")
 
     if len(local) >= 3:
         if previous and previous["inputs"] == payload["inputs"]:

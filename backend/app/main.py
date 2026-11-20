@@ -119,7 +119,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             with suppress(asyncio.CancelledError):
                 await task
 
-    app = FastAPI(title="NearHelp", lifespan=lifespan)
+    app = FastAPI(title="Around You", lifespan=lifespan)
     app.state.demo_guests = demo_enabled()
     app.include_router(location_router(path))
     app.include_router(places_router(path))

@@ -27,7 +27,7 @@ def create_admin(path, username, password):
         try:
             connection.execute(
                 "INSERT INTO accounts (id,username,nickname,password_hash,is_admin) VALUES (?,?,?,?,1)",
-                (str(uuid4()), username, "NearHelp 管理员", digest),
+                (str(uuid4()), username, "Around You 管理员", digest),
             )
         except sqlite3.IntegrityError:
             raise ValueError("该账号名已被使用，请选择一个新的管理员账号名。") from None

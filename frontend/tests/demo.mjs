@@ -65,7 +65,7 @@ try {
   const label = await a.getByRole('button', { name: /^邻友·/ }).innerText();
   assert.notEqual(label, await b.getByRole('button', { name: /^邻友·/ }).innerText());
   for (const p of [a, b]) {
-    await p.getByRole('link', { name: '附近讨论', exact: true }).click();
+    await p.getByRole('link', { name: 'Around Talk', exact: true }).click();
     await p.getByRole('link', { name: /如果 AI 写了九成代码/ }).click();
   }
   const answer = '调试和承担责任也是作者做的工作。';

@@ -34,7 +34,7 @@ function fix(highAccuracy: boolean): Promise<GeolocationPosition> {
 async function deviceFix() {
   if (!window.isSecureContext) throw new Error('定位需要 HTTPS。请用手机浏览器打开安全链接。');
   const policy = (document as Document & { featurePolicy?: { allowsFeature: (name: string) => boolean } }).featurePolicy;
-  if (policy && !policy.allowsFeature('geolocation')) throw new Error('当前页面禁止定位，请在系统浏览器中直接打开 NearHelp。');
+  if (policy && !policy.allowsFeature('geolocation')) throw new Error('当前页面禁止定位，请在系统浏览器中直接打开 Around You。');
   if (!navigator.geolocation) throw new Error('当前浏览器不支持定位，可用 Safari 或 Chrome 打开。');
   try {
     return await fix(true).catch((error) => {

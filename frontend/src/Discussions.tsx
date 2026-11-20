@@ -9,13 +9,13 @@ import { recentPositionTime } from './location';
 import { dateFormat, Icon } from './ui';
 import './discussions.css';
 
-type Featured = { id: number; title: string; venue: string; count: number };
+type Featured = { id: number; title: string; venue: string; count: number; featured: boolean; is_pinned: boolean };
 type Answer = { id: number; content: string; parent_id: number | null; nickname: string; created_at: string;
   likes: number; dislikes: number; my_vote: -1 | 0 | 1 };
 type Reference = { id: string; title: string; author: string; text: string; votes: number };
 type InsightPoint = { text: string; sources: string[] };
-type Insights = { zhihu: Reference[]; local: InsightPoint[]; comparison: InsightPoint[] };
-type Thread = { title: string; venue: string; active: boolean; answers: Answer[]; angle: string;
+type Insights = { zhihu: Reference[]; local: InsightPoint[]; comparison: InsightPoint[]; include_zhihu: boolean };
+type Thread = { title: string; venue: string; active: boolean; featured: boolean; answers: Answer[]; angle: string;
   insights: Insights;
   older: number | null; summary: { contributors: number; extracts: { comment_id: number; text: string }[] } };
 type Catalog = { questions: { key: string; title: string; url: string }[];
@@ -40,7 +40,9 @@ function NearbyQuestions({ body }: { body: string }) {
   if (!data.length) return <div className="empty"><h2>这个范围里还没有会场话题</h2>
     <p>可以调整上方的地区或范围，也可以先看看附近的求助。</p><Link href="/">查看附近求助</Link></div>;
   return <ul className="topic-list">{data.map(item => <li className="card talk-feature" key={item.id}>
-    <Link href={'/discussions/' + item.id}><span className="talk-place"><Icon name="pin" size={16} />{item.venue} · 本期一问</span>
+    <Link href={'/discussions/' + item.id}><span className="talk-place"><Icon name="pin" size={16} />{item.venue}
+      {item.is_pinned && <span className="pinned-label">置顶</span>}
+      {item.featured && !item.is_pinned && <span> · 本期一问</span>}</span>
       <h2>{item.title}</h2><div className="talk-foot"><span>{item.count} 条发言</span>
         <strong>{item.count ? '参与讨论' : '写第一条回答'} →</strong></div></Link>
   </li>)}</ul>;
@@ -102,7 +104,7 @@ export function DiscussionPage({ id, region, account, login }: {
   if (!data) return <p role="status">正在读取讨论…</p>;
   return <article className="talk-thread">
     <Link href="/discussions" className="back">返回附近讨论</Link>
-    <div className="card detail"><span className="talk-place">{data.venue} · {data.active ? '本期一问' : '往期讨论'}</span>
+    <div className="card detail"><span className="talk-place">{data.venue} · {data.active ? data.featured ? '本期一问' : '会场讨论' : '往期讨论'}</span>
       <h1>{data.title}</h1></div>
     <section className="card detail"><h2>会场里的回答</h2>
       {!data.answers.length && <p className="quiet">还没有人回答。你会怎么选？</p>}
@@ -151,7 +153,7 @@ export function DiscussionPage({ id, region, account, login }: {
         <small>{ref.author} · {ref.votes} 赞同</small>
         <p className="post-content">{ref.text}</p>
       </article>)}</section>}
-    {account?.is_admin && <InsightRefresh id={id} title={data.title} refresh={refresh} />}
+    {account?.is_admin && <InsightRefresh id={id} title={data.title} refresh={refresh} hasZhihu={!!data.insights?.include_zhihu} />}
   </article>;
 }
 
@@ -169,8 +171,9 @@ function InsightPoints({ points, showSource, zhihu }: {
   </li>)}</ul>;
 }
 
-function InsightRefresh({ id, title, refresh }: { id: string; title: string; refresh: () => void }) {
+function InsightRefresh({ id, title, refresh, hasZhihu }: { id: string; title: string; refresh: () => void; hasZhihu: boolean }) {
   const [query, setQuery] = useState(title);
+  const [includeZhihu, setIncludeZhihu] = useState(hasZhihu);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   async function run(event: FormEvent) {
@@ -179,7 +182,8 @@ function InsightRefresh({ id, title, refresh }: { id: string; title: string; ref
     setBusy(true);
     setNote('');
     try {
-      const result = await post<{ message: string }>(apiPath + '/' + id + '/insights', { query });
+      const result = await post<{ message: string }>(apiPath + '/' + id + '/insights',
+        { query: query.trim() || title, include_zhihu: includeZhihu });
       setNote(result.message);
       refresh();
     } catch (error) { setNote(problem(error)); } finally { setBusy(false); }
@@ -187,7 +191,10 @@ function InsightRefresh({ id, title, refresh }: { id: string; title: string; ref
   return <details className="card detail">
     <summary>管理讨论参考资料</summary>
     <form className="talk-form" onSubmit={run}>
-      <label className="field">知乎搜索关键词<input required minLength={2} maxLength={160} value={query} onChange={e => setQuery(e.target.value)} /></label>
+      <label className="help-checkbox"><input type="checkbox" checked={includeZhihu} disabled={busy}
+        onChange={e => setIncludeZhihu(e.target.checked)} />在本话题显示知乎回答</label>
+      {includeZhihu && <label className="field">知乎搜索关键词<input required minLength={2} maxLength={160} value={query}
+        onChange={e => setQuery(e.target.value)} /></label>}
       <button className="primary" disabled={busy}>{busy ? '正在更新…' : '更新参考资料与 AI 小结'}</button>
       {note && <p role="status">{note}</p>}
     </form>

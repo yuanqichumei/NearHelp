@@ -45,7 +45,7 @@ export function AccountPage({ account, update, returnTo, adminLogin = false }: {
 
   if (account) return <ProfilePage key={account.id} account={account} update={update} />;
   return <section className="card detail help-form">
-    <h1>{adminLogin ? '管理员登录' : register ? '创建账号' : '登录 NearHelp'}</h1>
+    <h1>{adminLogin ? '管理员登录' : register ? '创建账号' : '登录 Around You'}</h1>
     {!adminLogin && <p className="quiet">使用账号可在不同设备上继续之前的互助。</p>}
     <form onSubmit={signIn}>
       <fieldset disabled={busy}>

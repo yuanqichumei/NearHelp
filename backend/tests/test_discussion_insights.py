@@ -42,7 +42,7 @@ def test_admin_insights_uses_consent_and_discards_hidden_inputs(monkeypatch, tmp
             result.raise_for_status()
             if index == 0:
                 remove_id = result.json()["id"]
-        query = {"query": "题目关键词"}
+        query = {"query": "题目关键词", "include_zhihu": True}
         assert guests[0].post(path + "/insights", json=query).status_code == 403
         password = "fixture-admin-password"
         create_admin(db_path, "insights_admin", password)
@@ -61,3 +61,8 @@ def test_admin_insights_uses_consent_and_discards_hidden_inputs(monkeypatch, tmp
         after_hide = guests[0].get(path).json()["insights"]
         assert not after_hide["local"] and not after_hide["comparison"]
         assert after_hide["zhihu"] == info["zhihu"]
+        def fail_if_called(_):
+            raise AssertionError("Closed topics cannot fetch Zhihu excerpts")
+        monkeypatch.setattr(discussion_insights, "search_answers", fail_if_called)
+        admin.post(path + "/insights", json={"query": "题目关键词"}).raise_for_status()
+        assert guests[0].get(path).json()["insights"]["zhihu"] == []

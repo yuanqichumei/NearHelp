@@ -88,7 +88,21 @@ def test_one_feature_per_venue_and_archived_source_links(forum):
     assert admin.post(BASE + "/feature", json={**config, "expected_topic_id": updated}).json()["id"] == updated
     initialize(db)
     cards = guest.post(BASE + "/nearby", json=VENUE).json()
-    assert [c["id"] for c in cards] == [updated] and cards[0]["count"] == 0
+    assert [c["id"] for c in cards if c["featured"]] == [updated]
+    assert {c["title"] for c in cards if not c["featured"]} == {
+        "本次黑客松，你觉得哪个作品更好？", "港校毕业后，你打算留在香港发展吗？",
+    }
+    assert all(c["count"] == 0 for c in cards)
+    endpoint = "/api/admin/discussion-topics"
+    topic = next(c["id"] for c in cards if not c["featured"])
+    assert guest.post(f"{endpoint}/{topic}", json={"action": "pin"}).status_code == 403
+    assert admin.post(f"{endpoint}/{topic}", json={"action": "pin"}).status_code == 204
+    assert guest.post(BASE + "/nearby", json=VENUE).json()[0]["id"] == topic
+    assert admin.post(f"{endpoint}/{topic}", json={"action": "hide"}).status_code == 204
+    assert guest.get(f"{BASE}/{topic}").status_code == 404
+    assert guest.post(f"{BASE}/{topic}/answers", json={"content": "已下架"}).status_code == 404
+    assert admin.post(f"{endpoint}/{topic}", json={"action": "restore"}).status_code == 204
+    assert guest.get(f"{BASE}/{topic}").status_code == 200
     assert guest.post(BASE + "/nearby", json={"lat": 0, "lon": 0}).json() == []
     assert guest.get(f"{BASE}/{tid}").json()["active"] is False
     assert guest.post(f"{BASE}/{tid}/answers", json={"content": "往期"}).status_code == 409

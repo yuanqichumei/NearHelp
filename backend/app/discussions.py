@@ -31,6 +31,7 @@ class AnswerVote(BaseModel):
 
 class InsightQuery(BaseModel):
     query: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=160)]
+    include_zhihu: bool = False
 
 
 class Selection(Point):
@@ -103,7 +104,7 @@ def discussion_router(path):
         with connect(path) as db:
             require_admin(db, request)
             venues = [dict(row) for row in db.execute(
-                "SELECT topic_id,venue,question_key,zhihu_url FROM discussion_rounds WHERE active=1 ORDER BY venue")]
+                "SELECT topic_id,venue,question_key,zhihu_url FROM discussion_rounds WHERE active=1 AND featured=1 ORDER BY venue")]
         return {"questions": [{"key": k, "title": v["title"], "url": v["url"]} for k, v in QUESTIONS.items()],
                 "venues": venues}
 
@@ -118,30 +119,35 @@ def discussion_router(path):
                 raise HTTPException(422, "请选择题库中的问题。")
             if body.zhihu_url and not re.fullmatch(r"https://(?:www\.)?zhihu\.com/question/[0-9]+(?:/answer/[0-9]+)?/?", body.zhihu_url):
                 raise HTTPException(422, "请填写知乎问题或回答的 HTTPS 原文链接。")
-            current = db.execute("SELECT topic_id FROM discussion_rounds WHERE venue=? AND active=1", (body.venue,)).fetchone()
+            current = db.execute("SELECT topic_id FROM discussion_rounds WHERE venue=? AND active=1 AND featured=1", (body.venue,)).fetchone()
             if body.expected_topic_id != (current[0] if current else None):
                 raise HTTPException(409, "会场已存在或本期题目已更新，请重新选择会场再保存。")
+            if db.execute("""SELECT 1 FROM discussion_rounds WHERE venue=? AND question_key=?
+                          AND active=1 AND featured=0""", (body.venue, body.question)).fetchone():
+                raise HTTPException(409, "这个会场已经有同题讨论，可从管理页置顶。")
             return {"id": feature(db, body.venue, body.lat, body.lon, body.question, body.zhihu_url)}
 
     @router.post("/nearby")
     def nearby(body: Discovery, request: Request):
+        now = time.time()
         with connect(path) as db:
             actor = viewer_id(db, request)
             venues = []
-            for row in db.execute(ROUND + " WHERE d.active=1 AND d.lat BETWEEN ? AND ?",
+            for row in db.execute(ROUND + " WHERE d.active=1 AND d.hidden_at IS NULL AND d.lat BETWEEN ? AND ?",
                                   (body.lat - .04, body.lat + .04)):
                 meters = distance(row["lat"], row["lon"], body.lat, body.lon)
                 if meters <= body.radius:
                     total = db.execute(f"SELECT count(*) FROM comments c WHERE c.topic_id=:id AND {VISIBLE}",
                                        {"id": row["topic_id"], "viewer": actor}).fetchone()[0]
-                    venues.append((meters, {"id": row["topic_id"], "title": row["title"], "venue": row["venue"], "count": total}))
-            return [item for _, item in sorted(venues, key=lambda x: (x[0], x[1]["id"]))]
+                    venues.append((meters, {"id": row["topic_id"], "title": row["title"], "venue": row["venue"], "count": total,
+                                            "is_pinned": (row["pinned_until"] or 0) > now, "featured": bool(row["featured"])}))
+            return [item for _, item in sorted(venues, key=lambda x: (not x[1]["is_pinned"], x[0], x[1]["id"]))]
 
     @router.get("/{topic_id}")
     def detail(topic_id: RequestId, request: Request, before: Annotated[int, Query(gt=0, le=2**63-1)] | None = None):
         with connect(path) as db:
             db.execute("BEGIN")
-            row = db.execute(ROUND + " WHERE d.topic_id=?", (topic_id,)).fetchone()
+            row = db.execute(ROUND + " WHERE d.topic_id=? AND d.hidden_at IS NULL", (topic_id,)).fetchone()
             if not row:
                 raise HTTPException(404, "找不到这场讨论。")
             args = {"id": topic_id, "viewer": viewer_id(db, request), "before": before}
@@ -153,6 +159,7 @@ def discussion_router(path):
                 ORDER BY c.id DESC LIMIT 51""", args).fetchall()
             sources = local_sources(db, topic_id, args["viewer"])
             return {"id": topic_id, "title": row["title"], "venue": row["venue"], "active": bool(row["active"]),
+                    "featured": bool(row["featured"]),
                     "angle": QUESTIONS[row["question_key"]]["angle"], "zhihu_url": row["zhihu_url"],
                     "themes": QUESTIONS[row["question_key"]]["themes"],
                     "answers": [dict(r) for r in rows[:50]], "older": rows[49]["id"] if len(rows)>50 else None,
@@ -169,7 +176,7 @@ def discussion_router(path):
             if row is None:
                 raise HTTPException(404, "找不到这场讨论。")
             sources = local_sources(db, topic_id, None)
-        return refresh_insights(path, topic_id, row["title"], body.query, sources)
+        return refresh_insights(path, topic_id, row["title"], body.query, sources, body.include_zhihu)
 
     @router.post("/{topic_id}/answers", status_code=201)
     def answer(topic_id: RequestId, body: Answer, request: Request):
@@ -178,7 +185,7 @@ def discussion_router(path):
         with connect(path) as db:
             db.execute("BEGIN IMMEDIATE")
             account = require_help_user(db, request)
-            row = db.execute("SELECT * FROM discussion_rounds WHERE topic_id=?", (topic_id,)).fetchone()
+            row = db.execute("SELECT * FROM discussion_rounds WHERE topic_id=? AND hidden_at IS NULL", (topic_id,)).fetchone()
             if not row:
                 raise HTTPException(404, "找不到这场讨论。")
             if not row["active"]:
@@ -209,7 +216,7 @@ def discussion_router(path):
             account = require_help_user(db, request)
             actor = account["id"]
             if not db.execute(f"""SELECT 1 FROM comments c JOIN discussion_rounds d ON d.topic_id=c.topic_id
-                WHERE c.topic_id=:topic AND c.id=:id AND d.active=1 AND {VISIBLE}""",
+                WHERE c.topic_id=:topic AND c.id=:id AND d.active=1 AND d.hidden_at IS NULL AND {VISIBLE}""",
                 {"topic": topic_id, "id": comment_id, "viewer": actor}).fetchone():
                 raise HTTPException(404, "找不到可以投票的回答。")
             throttle(db, request, actor, "discussion-vote", time.time(), 40)
